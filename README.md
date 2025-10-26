@@ -74,6 +74,11 @@ Gmail Fast Reader would accept the following configuration parameters:
   The user must specify their own OpenAI key for the add-on's OpenAI analysis
   backend to work.
 
+- Time zome
+
+  The user's time zone. The time zone will be used to determine the best time
+  to trigger time-based tasks.
+
 ## Algorithm
 
 Gmail Fast Reader will take every email and run them through an OpenAI's 
