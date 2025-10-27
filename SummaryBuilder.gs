@@ -60,7 +60,7 @@ function sendSummaryEmail(e) {
     const subject = `${config.addonName} - Daily Summary - ${new Date().toLocaleDateString()}`;
     
     GmailApp.sendEmail(
-      Session.getActiveUser().getEmail(),
+      getUserEmailAddress(),
       subject,
       '', // Plain text version (empty, we're using HTML)
       {

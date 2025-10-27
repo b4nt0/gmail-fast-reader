@@ -228,7 +228,7 @@ function sendProcessingCompleteEmail() {
   const subject = `${config.addonName} - Processing Complete - ${new Date().toLocaleDateString()}`;
   
   GmailApp.sendEmail(
-    Session.getActiveUser().getEmail(),
+    getUserEmailAddress(),
     subject,
     '',
     {
@@ -247,7 +247,7 @@ function sendProcessingErrorEmail(errorMessage) {
   const body = `Email processing failed with the following error:\n\n${errorMessage}\n\nPlease check your configuration and try again.`;
   
   GmailApp.sendEmail(
-    Session.getActiveUser().getEmail(),
+    getUserEmailAddress(),
     subject,
     body,
     {
@@ -265,7 +265,7 @@ function sendProcessingTimeoutEmail() {
   const body = `Email processing timed out after 10 minutes.\n\nThis usually happens when processing a large number of emails. Please try:\n\n1. Using a shorter time range (e.g., 6 hours instead of 7 days)\n2. Reducing the number of topics to focus on\n3. Checking your internet connection\n\nYou can check the status in the Gmail Fast Reader add-on.`;
   
   GmailApp.sendEmail(
-    Session.getActiveUser().getEmail(),
+    getUserEmailAddress(),
     subject,
     body,
     {

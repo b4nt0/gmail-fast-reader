@@ -82,6 +82,28 @@ function calculateDateRange(timeRange) {
 }
 
 /**
+ * Check if an email should be ignored (from user or contains addon name)
+ */
+function shouldIgnoreEmail(email, userEmail, addonName) {
+  // Ignore emails from the user's own email address
+  if (userEmail && email.sender && email.sender.toLowerCase().includes(userEmail.toLowerCase())) {
+    return true;
+  }
+  
+  // Ignore emails that contain the addon name in subject or body
+  if (addonName) {
+    const subjectLower = (email.subject || '').toLowerCase();
+    const addonNameLower = addonName.toLowerCase();
+    
+    if (subjectLower.includes(addonNameLower)) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
  * Fetch email threads from Gmail API (prioritizing threads)
  */
 function fetchEmailThreadsFromGmail(dateRange) {
@@ -91,20 +113,30 @@ function fetchEmailThreadsFromGmail(dateRange) {
     const threads = GmailApp.search(query, 0, 100); // Get more threads initially
     const emailThreads = [];
     
+    // Get user email and addon name for filtering
+    const userEmail = getUserEmailAddress();
+    const config = getConfiguration();
+    const addonName = config.addonName;
+    
     threads.forEach(thread => {
       const messages = thread.getMessages();
       const threadEmails = [];
       
       messages.forEach(message => {
         if (message.getDate() >= dateRange.start && message.getDate() <= dateRange.end) {
-          threadEmails.push({
+          const email = {
             id: message.getId(),
             subject: message.getSubject(),
             sender: message.getFrom(),
             date: message.getDate(),
             body: message.getPlainBody(),
             snippet: message.getPlainBody().substring(0, 200)
-          });
+          };
+          
+          // Only include emails that should not be ignored
+          if (!shouldIgnoreEmail(email, userEmail, addonName)) {
+            threadEmails.push(email);
+          }
         }
       });
       

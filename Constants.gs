@@ -1,5 +1,5 @@
 /**
- * Gmail Fast Reader - Global Constants
+ * Gmail Fast Reader - Global Constants and Utility Functions
  */
 
 // Processing timeout threshold (10 minutes in milliseconds)
@@ -15,3 +15,15 @@ const PROCESSING_STATUS = {
   ERROR: 'error',
   TIMEOUT: 'timeout'
 };
+
+/**
+ * Get the current user's email address
+ */
+function getUserEmailAddress() {
+  try {
+    return Session.getActiveUser().getEmail();
+  } catch (error) {
+    console.error('Error getting user email address:', error);
+    return null;
+  }
+}
