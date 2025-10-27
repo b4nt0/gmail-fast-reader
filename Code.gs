@@ -365,6 +365,7 @@ function checkProcessingStatus() {
     properties.deleteProperty('processingMessage');
     properties.deleteProperty('processingResults');
     properties.deleteProperty('processingStartTime');
+    results.message = 'Processing complete';
     return buildSummaryCard(results);
   }
   
