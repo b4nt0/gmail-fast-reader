@@ -102,6 +102,7 @@ function generateSummaryHTML(results, config) {
         .item-content { margin-bottom: 5px; }
         .date { color: #e67e22; font-weight: bold; }
         .urgent-date { color: #e74c3c; font-weight: bold; }
+        .outdated-date { color: #95a5a6; font-weight: normal; }
         .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #e1e8ed; font-size: 0.9em; color: #7f8c8d; }
       </style>
     </head>
@@ -130,7 +131,8 @@ function generateSummaryHTML(results, config) {
     
     sortedMustDo.forEach(item => {
       const isUrgent = item.date && (item.date === today || item.date === tomorrow);
-      const dateClass = isUrgent ? 'urgent-date' : 'date';
+      const isOutdated = item.date && item.date < today;
+      const dateClass = isUrgent ? 'urgent-date' : (isOutdated ? 'outdated-date' : 'date');
       const itemClass = isUrgent ? 'item urgent' : 'item';
       
       html += `
@@ -138,7 +140,7 @@ function generateSummaryHTML(results, config) {
           <div class="item-header">${item.subject}</div>
           <div class="item-meta">From: ${item.sender} | Topic: ${item.topic}</div>
           <div class="item-content"><strong>Action:</strong> ${item.keyAction}</div>
-          ${item.date ? `<div class="${dateClass}">📅 ${item.date}${isUrgent ? ' (URGENT!)' : ''}</div>` : ''}
+          ${item.date ? `<div class="${dateClass}">📅 ${item.date}${isUrgent ? ' (URGENT!)' : (isOutdated ? ' (OUTDATED)' : '')}</div>` : ''}
         </div>
       `;
     });
@@ -162,16 +164,12 @@ function generateSummaryHTML(results, config) {
     });
     
     sortedMustKnow.forEach(item => {
-      const isUrgent = item.date && (item.date === today || item.date === tomorrow);
-      const dateClass = isUrgent ? 'urgent-date' : 'date';
-      const itemClass = isUrgent ? 'item urgent' : 'item';
-      
       html += `
-        <div class="${itemClass}">
+        <div class="item">
           <div class="item-header">${item.subject}</div>
           <div class="item-meta">From: ${item.sender} | Topic: ${item.topic}</div>
           <div class="item-content"><strong>Key Info:</strong> ${item.keyKnowledge}</div>
-          ${item.date ? `<div class="${dateClass}">📅 ${item.date}${isUrgent ? ' (URGENT!)' : ''}</div>` : ''}
+          ${item.date ? `<div class="date">📅 ${item.date}</div>` : ''}
         </div>
       `;
     });
@@ -207,9 +205,7 @@ function formatItemsForCard(items) {
   
   return items.map((item, index) => {
     const dateStr = item.date ? ` (${item.date})` : '';
-    const urgentFlag = item.date && (item.date === new Date().toISOString().split('T')[0] || 
-                                    item.date === new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().split('T')[0]) ? ' ⚠️ URGENT' : '';
     
-    return `${index + 1}. ${item.subject}${dateStr}${urgentFlag}\n   From: ${item.sender}\n   ${item.keyAction || item.keyKnowledge}`;
+    return `${index + 1}. ${item.subject}${dateStr}\n   From: ${item.sender}\n   ${item.keyAction || item.keyKnowledge}`;
   }).join('\n\n');
 }
