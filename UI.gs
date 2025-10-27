@@ -10,6 +10,11 @@ function buildMainCard() {
     const isConfigured = isConfigurationComplete();
     const isRunning = isProcessingRunning();
     
+    // Check if there are previous run results available
+    const properties = PropertiesService.getUserProperties();
+    const hasPreviousResults = properties.getProperty('latestRunStats') !== null;
+    const hasProcessStatus = properties.getProperty('processingStatus') !== null;
+    
     // Create card header
     const header = CardService.newCardHeader()
       .setTitle('Gmail Fast Reader')
@@ -43,23 +48,27 @@ function buildMainCard() {
       .addWidget(CardService.newButtonSet()
         .addButton(scanButton));
     
-    // Create status check button with highlighting if running
-    const statusButton = CardService.newTextButton()
-      .setText(isRunning ? '🔄 Check Status (Running)' : '🔄 Check Status')
-      .setOnClickAction(CardService.newAction()
-        .setFunctionName('checkProcessingStatus'));
-    
-    const statusSection = CardService.newCardSection()
-      .addWidget(CardService.newButtonSet()
-        .addButton(statusButton));
-    
     // Build the card
     const cardBuilder = CardService.newCardBuilder()
       .setHeader(header)
       .addSection(welcomeSection)
       .addSection(configureSection)
-      .addSection(scanSection)
-      .addSection(statusSection);
+      .addSection(scanSection);
+    
+    // Only add status check button if there's active processing or previous results
+    if (hasProcessStatus || hasPreviousResults) {
+      // Create status check button with highlighting if running
+      const statusButton = CardService.newTextButton()
+        .setText(isRunning ? '🔄 Check Status (Running)' : '🔄 Check Status')
+        .setOnClickAction(CardService.newAction()
+          .setFunctionName('checkProcessingStatus'));
+      
+      const statusSection = CardService.newCardSection()
+        .addWidget(CardService.newButtonSet()
+          .addButton(statusButton));
+      
+      cardBuilder.addSection(statusSection);
+    }
     
     // Add warning section if not configured
     if (!isConfigured) {

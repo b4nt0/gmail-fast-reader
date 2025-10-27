@@ -290,7 +290,14 @@ function checkProcessingStatus() {
   const status = properties.getProperty('processingStatus');
   
   if (!status) {
-    return buildMainCard();
+    // No active processing and no status - show main card
+    const latestRunStats = properties.getProperty('latestRunStats');
+    if (latestRunStats) {
+      return buildLatestRunStatsCard();
+    }
+    else {
+      return buildMainCard();
+    }
   }
   
   if (status === PROCESSING_STATUS.RUNNING) {
@@ -309,11 +316,19 @@ function checkProcessingStatus() {
       const timeDiff = currentTime.getTime() - startTime.getTime();
       
       if (timeDiff > PROCESSING_TIMEOUT_MS) {
-        // Processing has timed out
-        properties.setProperties({
-          'processingStatus': PROCESSING_STATUS.TIMEOUT,
-          'processingMessage': 'Processing timed out after 10 minutes. Please try again with a smaller time range.'
-        });
+        // Processing has timed out - save latest stats before clearing
+        saveLatestRunStats(properties, PROCESSING_STATUS.TIMEOUT, 'Processing timed out after 10 minutes. Please try again with a smaller time range.');
+        
+        // Clear processing status
+        properties.deleteProperty('processingStatus');
+        properties.deleteProperty('processingMessage');
+        properties.deleteProperty('processingResults');
+        properties.deleteProperty('processingStartTime');
+        properties.deleteProperty('processingProgress');
+        properties.deleteProperty('processedThreads');
+        properties.deleteProperty('totalThreads');
+        properties.deleteProperty('processedMessages');
+        properties.deleteProperty('totalMessages');
         
         // Send timeout notification email
         try {
@@ -322,7 +337,8 @@ function checkProcessingStatus() {
           console.error('Failed to send timeout email:', emailError);
         }
         
-        return buildErrorCard('Processing timed out after 10 minutes. Please try again with a smaller time range.');
+        // Show latest run statistics
+        return buildLatestRunStatsCard();
       }
     }
     
@@ -360,32 +376,243 @@ function checkProcessingStatus() {
   
   if (status === PROCESSING_STATUS.COMPLETED) {
     const results = JSON.parse(properties.getProperty('processingResults') || '{}');
+    const startTimeStr = properties.getProperty('processingStartTime');
+    const processedThreads = parseInt(properties.getProperty('processedThreads') || '0');
+    const totalThreads = parseInt(properties.getProperty('totalThreads') || '0');
+    const processedMessages = parseInt(properties.getProperty('processedMessages') || '0');
+    const totalMessages = parseInt(properties.getProperty('totalMessages') || '0');
+    
+    // Calculate duration
+    let duration = 0;
+    if (startTimeStr) {
+      const startTime = new Date(startTimeStr);
+      const endTime = new Date();
+      duration = endTime.getTime() - startTime.getTime();
+    }
+    
+    // Save latest run stats before clearing
+    saveLatestRunStats(properties, PROCESSING_STATUS.COMPLETED, 'Processing completed successfully', {
+      results: results,
+      duration: duration,
+      processedThreads: processedThreads,
+      totalThreads: totalThreads,
+      processedMessages: processedMessages,
+      totalMessages: totalMessages
+    });
+    
     // Clear processing status
     properties.deleteProperty('processingStatus');
     properties.deleteProperty('processingMessage');
     properties.deleteProperty('processingResults');
     properties.deleteProperty('processingStartTime');
-    results.message = 'Processing complete';
-    return buildSummaryCard(results);
+    properties.deleteProperty('processingProgress');
+    properties.deleteProperty('processedThreads');
+    properties.deleteProperty('totalThreads');
+    properties.deleteProperty('processedMessages');
+    properties.deleteProperty('totalMessages');
+    
+    // Show latest run statistics
+    return buildLatestRunStatsCard();
   }
   
   if (status === PROCESSING_STATUS.ERROR) {
     const message = properties.getProperty('processingMessage') || 'Processing failed';
+    const startTimeStr = properties.getProperty('processingStartTime');
+    const processedThreads = parseInt(properties.getProperty('processedThreads') || '0');
+    const totalThreads = parseInt(properties.getProperty('totalThreads') || '0');
+    const processedMessages = parseInt(properties.getProperty('processedMessages') || '0');
+    const totalMessages = parseInt(properties.getProperty('totalMessages') || '0');
+    
+    // Calculate duration
+    let duration = 0;
+    if (startTimeStr) {
+      const startTime = new Date(startTimeStr);
+      const endTime = new Date();
+      duration = endTime.getTime() - startTime.getTime();
+    }
+    
+    // Save latest run stats before clearing
+    saveLatestRunStats(properties, PROCESSING_STATUS.ERROR, message, {
+      duration: duration,
+      processedThreads: processedThreads,
+      totalThreads: totalThreads,
+      processedMessages: processedMessages,
+      totalMessages: totalMessages
+    });
+    
     // Clear processing status
     properties.deleteProperty('processingStatus');
     properties.deleteProperty('processingMessage');
     properties.deleteProperty('processingStartTime');
-    return buildErrorCard(message);
+    properties.deleteProperty('processingProgress');
+    properties.deleteProperty('processedThreads');
+    properties.deleteProperty('totalThreads');
+    properties.deleteProperty('processedMessages');
+    properties.deleteProperty('totalMessages');
+    
+    // Show latest run statistics
+    return buildLatestRunStatsCard();
   }
   
   if (status === PROCESSING_STATUS.TIMEOUT) {
     const message = properties.getProperty('processingMessage') || 'Processing timed out';
+    const startTimeStr = properties.getProperty('processingStartTime');
+    const processedThreads = parseInt(properties.getProperty('processedThreads') || '0');
+    const totalThreads = parseInt(properties.getProperty('totalThreads') || '0');
+    const processedMessages = parseInt(properties.getProperty('processedMessages') || '0');
+    const totalMessages = parseInt(properties.getProperty('totalMessages') || '0');
+    
+    // Calculate duration
+    let duration = 0;
+    if (startTimeStr) {
+      const startTime = new Date(startTimeStr);
+      const endTime = new Date();
+      duration = endTime.getTime() - startTime.getTime();
+    }
+    
+    // Save latest run stats before clearing
+    saveLatestRunStats(properties, PROCESSING_STATUS.TIMEOUT, message, {
+      duration: duration,
+      processedThreads: processedThreads,
+      totalThreads: totalThreads,
+      processedMessages: processedMessages,
+      totalMessages: totalMessages
+    });
+    
     // Clear processing status
     properties.deleteProperty('processingStatus');
     properties.deleteProperty('processingMessage');
     properties.deleteProperty('processingStartTime');
-    return buildErrorCard(message);
+    properties.deleteProperty('processingProgress');
+    properties.deleteProperty('processedThreads');
+    properties.deleteProperty('totalThreads');
+    properties.deleteProperty('processedMessages');
+    properties.deleteProperty('totalMessages');
+    
+    // Show latest run statistics
+    return buildLatestRunStatsCard();
   }
   
   return buildMainCard();
+}
+
+/**
+ * Save latest run statistics to properties
+ */
+function saveLatestRunStats(properties, status, message, additionalData = {}) {
+  const endTime = new Date();
+  
+  const latestStats = {
+    status: status,
+    message: message,
+    endTime: endTime.toISOString(),
+    ...additionalData
+  };
+  
+  properties.setProperty('latestRunStats', JSON.stringify(latestStats));
+}
+
+/**
+ * Build card showing latest run statistics
+ */
+function buildLatestRunStatsCard() {
+  const properties = PropertiesService.getUserProperties();
+  const latestStatsStr = properties.getProperty('latestRunStats');
+  
+  if (!latestStatsStr) {
+    return buildMainCard();
+  }
+  
+  try {
+    const latestStats = JSON.parse(latestStatsStr);
+    const config = getConfiguration();
+    
+    // Format duration
+    let durationText = 'Unknown';
+    if (latestStats.duration) {
+      const durationMinutes = Math.floor(latestStats.duration / (1000 * 60));
+      const durationSeconds = Math.floor((latestStats.duration % (1000 * 60)) / 1000);
+      durationText = `${durationMinutes}m ${durationSeconds}s`;
+    }
+    
+    // Format end time
+    const endTime = new Date(latestStats.endTime);
+    const endTimeText = endTime.toLocaleString();
+    
+    // Build status-specific content
+    let statusIcon = '❓';
+    let statusColor = 'blue';
+    let statusText = latestStats.status;
+    
+    switch (latestStats.status) {
+      case PROCESSING_STATUS.COMPLETED:
+        statusIcon = '✅';
+        statusColor = 'green';
+        statusText = 'Completed Successfully';
+        break;
+      case PROCESSING_STATUS.ERROR:
+        statusIcon = '❌';
+        statusColor = 'red';
+        statusText = 'Failed';
+        break;
+      case PROCESSING_STATUS.TIMEOUT:
+        statusIcon = '⏰';
+        statusColor = 'orange';
+        statusText = 'Timed Out';
+        break;
+    }
+    
+    // Build statistics text
+    let statsText = `${statusIcon} Status: ${statusText}\n`;
+    statsText += `📅 Completed: ${endTimeText}\n`;
+    statsText += `⏱️ Duration: ${durationText}\n`;
+    
+    if (latestStats.totalThreads !== undefined) {
+      statsText += `📧 Threads: ${latestStats.processedThreads || 0}/${latestStats.totalThreads}\n`;
+    }
+    
+    if (latestStats.totalMessages !== undefined) {
+      statsText += `💬 Messages: ${latestStats.processedMessages || 0}/${latestStats.totalMessages}\n`;
+    }
+    
+    if (latestStats.results) {
+      const results = latestStats.results;
+      if (results.mustDo && results.mustDo.length > 0) {
+        statsText += `🎯 Actionable Items: ${results.mustDo.length}\n`;
+      }
+      if (results.mustKnow && results.mustKnow.length > 0) {
+        statsText += `📚 Informational Items: ${results.mustKnow.length}\n`;
+      }
+    }
+    
+    statsText += `\n💬 Message: ${latestStats.message}`;
+    
+    return CardService.newCardBuilder()
+      .setHeader(CardService.newCardHeader()
+        .setTitle(`${config.addonName} - Latest Run Statistics`)
+        .setSubtitle(`Last run: ${endTimeText}`)
+        .setImageUrl('https://www.gstatic.com/images/icons/material/system/1x/assessment_black_24dp.png')
+        .setImageStyle(CardService.ImageStyle.CIRCLE))
+      .addSection(CardService.newCardSection()
+        .addWidget(CardService.newTextParagraph()
+          .setText(statsText)))
+      .addSection(CardService.newCardSection()
+        .addWidget(CardService.newTextButton()
+          .setText('🔄 Start New Scan')
+          .setOnClickAction(CardService.newAction()
+            .setFunctionName('buildActiveWorkflowCard')))
+        .addWidget(CardService.newTextButton()
+          .setText('⚙️ Configuration')
+          .setOnClickAction(CardService.newAction()
+            .setFunctionName('buildConfigCard')))
+        .addWidget(CardService.newTextButton()
+          .setText('🏠 Main Menu')
+          .setOnClickAction(CardService.newAction()
+            .setFunctionName('buildMainCard'))))
+      .build();
+      
+  } catch (error) {
+    console.error('Error building latest run stats card:', error);
+    return buildMainCard();
+  }
 }
