@@ -78,6 +78,19 @@ function sendSummaryEmail(e) {
 }
 
 /**
+ * Generate Gmail search URL for a specific email using RFC822 message ID
+ */
+function generateGmailPermalink(rfc822MessageId) {
+  if (!rfc822MessageId) {
+    return null;
+  }
+  
+  // URL encode the message ID (especially the @ symbol)
+  const encodedMessageId = encodeURIComponent(rfc822MessageId);
+  return `https://mail.google.com/mail/u/0/#search/rfc822msgid%3A${encodedMessageId}`;
+}
+
+/**
  * Generate HTML content for summary email
  */
 function generateSummaryHTML(results, config) {
@@ -136,9 +149,13 @@ function generateSummaryHTML(results, config) {
       const dateClass = isUrgent ? 'urgent-date' : (isOutdated ? 'outdated-date' : 'date');
       const itemClass = isUrgent ? 'item urgent' : 'item';
       
+      // Generate permalink if RFC822 message ID is available
+      const permalink = generateGmailPermalink(item.rfc822MessageId);
+      const permalinkHtml = permalink ? `<a href="${permalink}" target="_blank" style="color: #3498db; text-decoration: none; font-size: 0.9em;">&#128279; View Email</a>` : '';
+      
       html += `
         <div class="${itemClass}">
-          <div class="item-header">${item.subject}</div>
+          <div class="item-header">${item.subject} ${permalinkHtml}</div>
           <div class="item-meta">From: ${item.sender} | Topic: ${item.topic}</div>
           <div class="item-content"><strong>Action:</strong> ${item.keyAction}</div>
           ${item.date ? `<div class="${dateClass}">&#128197; ${item.date}${isUrgent ? ' (URGENT!)' : (isOutdated ? ' (OUTDATED)' : '')}</div>` : ''}
@@ -165,9 +182,13 @@ function generateSummaryHTML(results, config) {
     });
     
     sortedMustKnow.forEach(item => {
+      // Generate permalink if RFC822 message ID is available
+      const permalink = generateGmailPermalink(item.rfc822MessageId);
+      const permalinkHtml = permalink ? `<a href="${permalink}" target="_blank" style="color: #3498db; text-decoration: none; font-size: 0.9em;">&#128279; View Email</a>` : '';
+      
       html += `
         <div class="item">
-          <div class="item-header">${item.subject}</div>
+          <div class="item-header">${item.subject} ${permalinkHtml}</div>
           <div class="item-meta">From: ${item.sender} | Topic: ${item.topic}</div>
           <div class="item-content"><strong>Key Info:</strong> ${item.keyKnowledge}</div>
           ${item.date ? `<div class="date">&#128197; ${item.date}</div>` : ''}

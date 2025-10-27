@@ -124,13 +124,26 @@ function fetchEmailThreadsFromGmail(dateRange) {
       
       messages.forEach(message => {
         if (message.getDate() >= dateRange.start && message.getDate() <= dateRange.end) {
+          // Get RFC822 message ID for permalink generation
+          let rfc822MessageId = null;
+          try {
+            const rawContent = message.getRawContent();
+            const messageIdMatch = rawContent.match(/Message-ID:\s*<([^>]+)>/i);
+            if (messageIdMatch) {
+              rfc822MessageId = messageIdMatch[1];
+            }
+          } catch (error) {
+            console.warn('Could not get RFC822 message ID for message:', message.getId(), error);
+          }
+          
           const email = {
             id: message.getId(),
             subject: message.getSubject(),
             sender: message.getFrom(),
             date: message.getDate(),
             body: message.getPlainBody(),
-            snippet: message.getPlainBody().substring(0, 200)
+            snippet: message.getPlainBody().substring(0, 200),
+            rfc822MessageId: rfc822MessageId
           };
           
           // Only include emails that should not be ignored
@@ -373,6 +386,7 @@ MANDATE: You MUST respond with valid JSON in exactly this structure:
   "mustDo": [
     {
       "emailId": "email_id",
+      "rfc822MessageId": "rfc822_message_id",
       "subject": "email subject",
       "sender": "sender email",
       "keyAction": "what the user must do",
@@ -382,7 +396,8 @@ MANDATE: You MUST respond with valid JSON in exactly this structure:
   ],
   "mustKnow": [
     {
-      "emailId": "email_id", 
+      "emailId": "email_id",
+      "rfc822MessageId": "rfc822_message_id", 
       "subject": "email subject",
       "sender": "sender email",
       "keyKnowledge": "what the user must know",
@@ -419,6 +434,8 @@ Thread ID: ${thread.threadId}
     
     thread.emails.forEach((email, emailIndex) => {
       threadData += `\nEmail ${emailIndex + 1}:
+Email ID: ${email.id}
+RFC822 Message ID: ${email.rfc822MessageId || 'N/A'}
 From: ${email.sender}
 Date: ${email.date.toISOString().split('T')[0]}
 Body: ${email.body.substring(0, 800)}${email.body.length > 800 ? '...' : ''}
