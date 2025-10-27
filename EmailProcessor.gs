@@ -142,17 +142,42 @@ function processEmailsInBatches(emailThreads, config) {
     batchesProcessed: 0
   };
   
+  // Calculate total threads and messages for progress tracking
+  const totalThreads = emailThreads.length;
+  const totalMessages = emailThreads.reduce((total, thread) => total + thread.emails.length, 0);
+  
+  // Update initial progress
+  updateProcessingProgress(0, totalThreads, 0, totalMessages, 'Starting email analysis...');
+  
   let currentBatch = [];
   let currentTokenCount = 0;
+  let processedThreads = 0;
+  let processedMessages = 0;
   
-  for (const thread of emailThreads) {
+  for (let i = 0; i < emailThreads.length; i++) {
+    const thread = emailThreads[i];
+    
+    // Update current processing status - show which thread we're about to process
+    updateProcessingProgress(processedThreads, totalThreads, processedMessages, totalMessages, 
+      `Processing thread ${i + 1}/${totalThreads}: ${thread.subject}`);
+    
     // Calculate tokens for this thread
     const threadTokens = estimateTokensForThread(thread);
     
     // If adding this thread would exceed the limit, process current batch first
     if (currentTokenCount + threadTokens > MAX_TOKENS && currentBatch.length > 0) {
+      // Update status before processing batch
+      updateProcessingProgress(processedThreads, totalThreads, processedMessages, totalMessages, 
+        `Processing batch ${allResults.batchesProcessed + 1} with ${currentBatch.length} threads...`);
+      
       const batchResults = analyzeEmailsWithOpenAI(currentBatch, config);
       mergeResults(allResults, batchResults);
+      
+      // Update progress after batch processing
+      processedThreads += currentBatch.length;
+      processedMessages += currentBatch.reduce((total, t) => total + t.emails.length, 0);
+      updateProcessingProgress(processedThreads, totalThreads, processedMessages, totalMessages, 
+        `Completed batch ${allResults.batchesProcessed + 1} - ${processedThreads}/${totalThreads} threads processed`);
       
       // Reset for next batch
       currentBatch = [];
@@ -166,9 +191,19 @@ function processEmailsInBatches(emailThreads, config) {
     
     // If this single thread exceeds the limit, process it alone
     if (threadTokens > MAX_TOKENS) {
+      // Update status before processing single thread
+      updateProcessingProgress(processedThreads, totalThreads, processedMessages, totalMessages, 
+        `Processing large thread: ${thread.subject}`);
+      
       const batchResults = analyzeEmailsWithOpenAI([thread], config);
       mergeResults(allResults, batchResults);
       allResults.batchesProcessed++;
+      
+      // Update progress after single thread processing
+      processedThreads += 1;
+      processedMessages += thread.emails.length;
+      updateProcessingProgress(processedThreads, totalThreads, processedMessages, totalMessages, 
+        `Completed thread: ${thread.subject} - ${processedThreads}/${totalThreads} threads processed`);
       
       // Reset for next batch
       currentBatch = [];
@@ -178,12 +213,42 @@ function processEmailsInBatches(emailThreads, config) {
   
   // Process remaining emails in final batch
   if (currentBatch.length > 0) {
+    updateProcessingProgress(processedThreads, totalThreads, processedMessages, totalMessages, 
+      `Processing final batch with ${currentBatch.length} threads...`);
+    
     const batchResults = analyzeEmailsWithOpenAI(currentBatch, config);
     mergeResults(allResults, batchResults);
     allResults.batchesProcessed++;
+    
+    // Update final progress
+    processedThreads += currentBatch.length;
+    processedMessages += currentBatch.reduce((total, t) => total + t.emails.length, 0);
+    updateProcessingProgress(processedThreads, totalThreads, processedMessages, totalMessages, 
+      `Analysis complete! Processed ${processedThreads}/${totalThreads} threads and ${processedMessages}/${totalMessages} messages.`);
   }
   
   return allResults;
+}
+
+/**
+ * Update processing progress in user properties
+ */
+function updateProcessingProgress(processedThreads, totalThreads, processedMessages, totalMessages, currentActivity) {
+  const properties = PropertiesService.getUserProperties();
+  
+  // Calculate percentages
+  const threadProgress = totalThreads > 0 ? Math.round((processedThreads / totalThreads) * 100) : 0;
+  const messageProgress = totalMessages > 0 ? Math.round((processedMessages / totalMessages) * 100) : 0;
+  
+  // Update progress properties
+  properties.setProperties({
+    'processingProgress': threadProgress.toString(),
+    'processingMessage': currentActivity,
+    'processedThreads': processedThreads.toString(),
+    'totalThreads': totalThreads.toString(),
+    'processedMessages': processedMessages.toString(),
+    'totalMessages': totalMessages.toString()
+  });
 }
 
 /**

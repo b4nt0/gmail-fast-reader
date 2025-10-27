@@ -3,6 +3,45 @@
  */
 
 /**
+ * Check if processing is currently running
+ */
+function isProcessingRunning() {
+  const properties = PropertiesService.getUserProperties();
+  const status = properties.getProperty('processingStatus');
+  
+  if (status !== PROCESSING_STATUS.RUNNING) {
+    return false;
+  }
+  
+  // Check for timeout
+  const startTimeStr = properties.getProperty('processingStartTime');
+  if (startTimeStr) {
+    const startTime = new Date(startTimeStr);
+    const currentTime = new Date();
+    const timeDiff = currentTime.getTime() - startTime.getTime();
+    
+    if (timeDiff > PROCESSING_TIMEOUT_MS) {
+      // Processing has timed out
+      properties.setProperties({
+        'processingStatus': PROCESSING_STATUS.TIMEOUT,
+        'processingMessage': 'Processing timed out after 10 minutes. Please try again with a smaller time range.'
+      });
+      
+      // Send timeout notification email
+      try {
+        sendProcessingTimeoutEmail();
+      } catch (emailError) {
+        console.error('Failed to send timeout email:', emailError);
+      }
+      
+      return false;
+    }
+  }
+  
+  return true;
+}
+
+/**
  * Main entry point when add-on is opened
  */
 function onHomepageTrigger(e) {
@@ -60,13 +99,18 @@ function handleConfigSubmit(e) {
  */
 function handleScanEmails(e) {
   try {
+    // Check if processing is already running
+    if (isProcessingRunning()) {
+      return buildErrorCard('Another email scanning process is already running. Please wait for it to complete or check the status.');
+    }
+    
     const timeRange = e.parameters.timeRange || '1day';
     
     // Start background processing
     startBackgroundEmailProcessing(timeRange);
     
-    // Return progress card
-    return buildProgressCard('Email processing started in background. You will receive an email when complete.');
+    // Return progress card with Check Status button
+    return buildProgressCardWithStatusButton('Email processing started in background. You will receive an email when complete.');
     
   } catch (error) {
     console.error('Error in handleScanEmails:', error);
@@ -81,11 +125,15 @@ function startBackgroundEmailProcessing(timeRange) {
   // Store processing status
   const properties = PropertiesService.getUserProperties();
   properties.setProperties({
-    'processingStatus': 'running',
+    'processingStatus': PROCESSING_STATUS.RUNNING,
     'processingStartTime': new Date().toISOString(),
     'processingTimeRange': timeRange,
     'processingProgress': '0',
-    'processingMessage': 'Starting email processing...'
+    'processingMessage': 'Starting email processing...',
+    'processedThreads': '0',
+    'totalThreads': '0',
+    'processedMessages': '0',
+    'totalMessages': '0'
   });
   
   // Create a time-based trigger to run the processing
@@ -116,12 +164,12 @@ function processEmailsInBackground() {
     const dateRange = calculateDateRange(timeRange);
     
     // Fetch email threads from Gmail
-    properties.setProperty('processingMessage', 'Analyzing emails with AI...');
+    properties.setProperty('processingMessage', 'Fetching emails from Gmail...');
     const emailThreads = fetchEmailThreadsFromGmail(dateRange);
     
     if (emailThreads.length === 0) {
       properties.setProperties({
-        'processingStatus': 'completed',
+        'processingStatus': PROCESSING_STATUS.COMPLETED,
         'processingMessage': 'No emails found in the selected time range.',
         'processingResults': JSON.stringify({
           mustDo: [],
@@ -134,12 +182,23 @@ function processEmailsInBackground() {
       return;
     }
     
+    // Initialize progress tracking with actual counts
+    const totalThreads = emailThreads.length;
+    const totalMessages = emailThreads.reduce((total, thread) => total + thread.emails.length, 0);
+    properties.setProperties({
+      'totalThreads': totalThreads.toString(),
+      'totalMessages': totalMessages.toString(),
+      'processedThreads': '0',
+      'processedMessages': '0',
+      'processingMessage': `Found ${totalThreads} threads with ${totalMessages} messages. Starting analysis...`
+    });
+    
     // Process emails in batches
     const results = processEmailsInBatches(emailThreads, config);
     
     // Store results
     properties.setProperties({
-      'processingStatus': 'completed',
+      'processingStatus': PROCESSING_STATUS.COMPLETED,
       'processingMessage': `Processing complete. Found ${results.mustDo.length} actionable items and ${results.mustKnow.length} informational items.`,
       'processingResults': JSON.stringify(results)
     });
@@ -150,7 +209,7 @@ function processEmailsInBackground() {
   } catch (error) {
     console.error('Error in background processing:', error);
     properties.setProperties({
-      'processingStatus': 'error',
+      'processingStatus': PROCESSING_STATUS.ERROR,
       'processingMessage': 'Processing failed: ' + error.message
     });
     sendProcessingErrorEmail(error.message);
@@ -234,21 +293,25 @@ function checkProcessingStatus() {
     return buildMainCard();
   }
   
-  if (status === 'running') {
+  if (status === PROCESSING_STATUS.RUNNING) {
     const startTimeStr = properties.getProperty('processingStartTime');
     const message = properties.getProperty('processingMessage') || 'Processing...';
+    const progress = properties.getProperty('processingProgress') || '0';
+    const processedThreads = parseInt(properties.getProperty('processedThreads') || '0');
+    const totalThreads = parseInt(properties.getProperty('totalThreads') || '0');
+    const processedMessages = parseInt(properties.getProperty('processedMessages') || '0');
+    const totalMessages = parseInt(properties.getProperty('totalMessages') || '0');
     
-    // Check for timeout (10 minutes = 600,000 milliseconds)
+    // Check for timeout
     if (startTimeStr) {
       const startTime = new Date(startTimeStr);
       const currentTime = new Date();
       const timeDiff = currentTime.getTime() - startTime.getTime();
-      const timeoutThreshold = 10 * 60 * 1000; // 10 minutes in milliseconds
       
-      if (timeDiff > timeoutThreshold) {
+      if (timeDiff > PROCESSING_TIMEOUT_MS) {
         // Processing has timed out
         properties.setProperties({
-          'processingStatus': 'timeout',
+          'processingStatus': PROCESSING_STATUS.TIMEOUT,
           'processingMessage': 'Processing timed out after 10 minutes. Please try again with a smaller time range.'
         });
         
@@ -263,8 +326,26 @@ function checkProcessingStatus() {
       }
     }
     
-    // Add elapsed time to the message
+    // Build detailed progress message
     let progressMessage = message;
+    
+    // Add progress information if available
+    if (totalThreads > 0 || totalMessages > 0) {
+      progressMessage += `\n\n📊 Progress: ${progress}%`;
+      
+      if (totalThreads > 0) {
+        progressMessage += `\n📧 Threads: ${processedThreads}/${totalThreads}`;
+      }
+      
+      if (totalMessages > 0) {
+        progressMessage += `\n💬 Messages: ${processedMessages}/${totalMessages}`;
+      }
+    } else {
+      // Show initial status when counts aren't available yet
+      progressMessage += `\n\n📊 Progress: ${progress}%`;
+    }
+    
+    // Add elapsed time
     if (startTimeStr) {
       const startTime = new Date(startTimeStr);
       const currentTime = new Date();
@@ -274,10 +355,10 @@ function checkProcessingStatus() {
       progressMessage += `\n\n⏱️ Elapsed time: ${elapsedMinutes}m ${elapsedSeconds}s`;
     }
     
-    return buildProgressCard(progressMessage);
+    return buildProgressCardWithAutoRefresh(progressMessage);
   }
   
-  if (status === 'completed') {
+  if (status === PROCESSING_STATUS.COMPLETED) {
     const results = JSON.parse(properties.getProperty('processingResults') || '{}');
     // Clear processing status
     properties.deleteProperty('processingStatus');
@@ -287,7 +368,7 @@ function checkProcessingStatus() {
     return buildSummaryCard(results);
   }
   
-  if (status === 'error') {
+  if (status === PROCESSING_STATUS.ERROR) {
     const message = properties.getProperty('processingMessage') || 'Processing failed';
     // Clear processing status
     properties.deleteProperty('processingStatus');
@@ -296,7 +377,7 @@ function checkProcessingStatus() {
     return buildErrorCard(message);
   }
   
-  if (status === 'timeout') {
+  if (status === PROCESSING_STATUS.TIMEOUT) {
     const message = properties.getProperty('processingMessage') || 'Processing timed out';
     // Clear processing status
     properties.deleteProperty('processingStatus');
