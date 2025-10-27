@@ -87,9 +87,10 @@ function generateSummaryHTML(results, config) {
   
   let html = `
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
       <meta charset="utf-8">
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
       <style>
         body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }
         .header { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
@@ -118,7 +119,7 @@ function generateSummaryHTML(results, config) {
   if (results.mustDo.length > 0) {
     html += `
       <div class="section">
-        <h2>📋 I Must Do (${results.mustDo.length} items)</h2>
+        <h2>&#128203; I Must Do (${results.mustDo.length} items)</h2>
     `;
     
     // Sort by date
@@ -140,7 +141,7 @@ function generateSummaryHTML(results, config) {
           <div class="item-header">${item.subject}</div>
           <div class="item-meta">From: ${item.sender} | Topic: ${item.topic}</div>
           <div class="item-content"><strong>Action:</strong> ${item.keyAction}</div>
-          ${item.date ? `<div class="${dateClass}">📅 ${item.date}${isUrgent ? ' (URGENT!)' : (isOutdated ? ' (OUTDATED)' : '')}</div>` : ''}
+          ${item.date ? `<div class="${dateClass}">&#128197; ${item.date}${isUrgent ? ' (URGENT!)' : (isOutdated ? ' (OUTDATED)' : '')}</div>` : ''}
         </div>
       `;
     });
@@ -152,7 +153,7 @@ function generateSummaryHTML(results, config) {
   if (results.mustKnow.length > 0) {
     html += `
       <div class="section">
-        <h2>📰 I Must Know (${results.mustKnow.length} items)</h2>
+        <h2>&#128240; I Must Know (${results.mustKnow.length} items)</h2>
     `;
     
     // Sort by date
@@ -169,7 +170,7 @@ function generateSummaryHTML(results, config) {
           <div class="item-header">${item.subject}</div>
           <div class="item-meta">From: ${item.sender} | Topic: ${item.topic}</div>
           <div class="item-content"><strong>Key Info:</strong> ${item.keyKnowledge}</div>
-          ${item.date ? `<div class="date">📅 ${item.date}</div>` : ''}
+          ${item.date ? `<div class="date">&#128197; ${item.date}</div>` : ''}
         </div>
       `;
     });
@@ -180,7 +181,7 @@ function generateSummaryHTML(results, config) {
   if (results.mustDo.length === 0 && results.mustKnow.length === 0) {
     html += `
       <div class="section">
-        <h2>📭 No Relevant Emails Found</h2>
+        <h2>&#128229; No Relevant Emails Found</h2>
         <p>No emails in the selected time range matched your configured topics of interest.</p>
       </div>
     `;
