@@ -13,15 +13,15 @@ function isProcessingRunning() {
     return false;
   }
   
-  // Check for timeout
-  const startTimeStr = properties.getProperty('processingStartTime');
-  if (startTimeStr) {
-    const startTime = new Date(startTimeStr);
+  // Check for chunk timeout (not overall processing timeout)
+  const chunkStartTimeStr = properties.getProperty('chunkStartTime');
+  if (chunkStartTimeStr) {
+    const chunkStartTime = new Date(chunkStartTimeStr);
     const currentTime = new Date();
-    const timeDiff = currentTime.getTime() - startTime.getTime();
+    const timeDiff = currentTime.getTime() - chunkStartTime.getTime();
     
     if (timeDiff > PROCESSING_TIMEOUT_MS) {
-      // Processing has timed out
+      // Current chunk has timed out
       properties.setProperties({
         'processingStatus': PROCESSING_STATUS.TIMEOUT,
         'processingMessage': 'Processing timed out after 10 minutes. Please try again with a smaller time range.'
@@ -119,7 +119,7 @@ function handleScanEmails(e) {
 }
 
 /**
- * Start background email processing
+ * Start background email processing (always uses chunked approach)
  */
 function startBackgroundEmailProcessing(timeRange) {
   // Store processing status
@@ -135,83 +135,207 @@ function startBackgroundEmailProcessing(timeRange) {
     'processedMessages': '0',
     'totalMessages': '0'
   });
-  
-  // Create a time-based trigger to run the processing
-  ScriptApp.newTrigger('processEmailsInBackground')
+
+  // Initialize chunked processing with 1-day chunks
+  const dateRange = calculateDateRange(timeRange);
+  const start = new Date(dateRange.start);
+  const end = new Date(dateRange.end);
+
+  // Compute 1-day chunks count
+  const oneDayMs = 24 * 60 * 60 * 1000;
+  const totalChunks = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / oneDayMs));
+
+  properties.setProperties({
+    'chunkCurrentStart': start.toISOString(),
+    'chunkEnd': end.toISOString(),
+    'chunkIndex': '0',
+    'chunkTotalChunks': String(totalChunks),
+    'accumulatedResults': JSON.stringify({ mustDo: [], mustKnow: [], totalProcessed: 0, batchesProcessed: 0 })
+  });
+
+  properties.setProperty('processingMessage', `Processing emails in ${totalChunks} 1-day chunks...`);
+
+  // Kick off first chunk
+  ScriptApp.newTrigger('processEmailsChunkedStep')
     .timeBased()
-    .after(1000) // Run after 1 second
+    .after(1000)
     .create();
 }
 
 /**
- * Background email processing function
+ * Unified chunked background processing - processes one day per invocation and chains next trigger
  */
-function processEmailsInBackground() {
+function processEmailsChunkedStep() {
   const properties = PropertiesService.getUserProperties();
-  
   try {
-    // Update status
-    properties.setProperty('processingMessage', 'Fetching emails from Gmail...');
-    
-    // Get configuration
     const config = getConfiguration();
     if (!config.openaiApiKey) {
       throw new Error('OpenAI API key not configured');
     }
-    
-    // Calculate date range
-    const timeRange = properties.getProperty('processingTimeRange') || '1day';
-    const dateRange = calculateDateRange(timeRange);
-    
-    // Fetch email threads from Gmail
-    properties.setProperty('processingMessage', 'Fetching emails from Gmail...');
-    const emailThreads = fetchEmailThreadsFromGmail(dateRange);
-    
-    if (emailThreads.length === 0) {
-      properties.setProperties({
-        'processingStatus': PROCESSING_STATUS.COMPLETED,
-        'processingMessage': 'No emails found in the selected time range.',
-        'processingResults': JSON.stringify({
-          mustDo: [],
-          mustKnow: [],
-          totalProcessed: 0,
-          message: 'No emails found in the selected time range.'
-        })
-      });
-      sendProcessingCompleteEmail();
+
+    // Load chunk state
+    const chunkStartIso = properties.getProperty('chunkCurrentStart');
+    const chunkEndIso = properties.getProperty('chunkEnd');
+    const chunkIndex = parseInt(properties.getProperty('chunkIndex') || '0');
+    const totalChunks = parseInt(properties.getProperty('chunkTotalChunks') || '1');
+    const accumulatedStr = properties.getProperty('accumulatedResults') || '{}';
+    const accumulated = accumulatedStr ? JSON.parse(accumulatedStr) : { mustDo: [], mustKnow: [], totalProcessed: 0, batchesProcessed: 0 };
+
+    if (!chunkStartIso || !chunkEndIso) {
+      throw new Error('Chunked processing state is missing');
+    }
+
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const overallStart = new Date(chunkStartIso);
+    const overallEnd = new Date(chunkEndIso);
+
+    // Compute this day's window
+    const currentStart = new Date(overallStart.getTime() + (chunkIndex * oneDayMs));
+    const currentStop = new Date(Math.min(currentStart.getTime() + oneDayMs, overallEnd.getTime()));
+
+    // If we've reached or passed the end, finalize
+    if (currentStart.getTime() >= overallEnd.getTime()) {
+      finalizeChunkedProcessing(accumulated);
       return;
     }
+
+    properties.setProperty('processingMessage', `Processing day ${chunkIndex + 1} of ${totalChunks} (${currentStart.toDateString()})...`);
+
+    // Set chunk start time for timeout detection
+    properties.setProperty('chunkStartTime', new Date().toISOString());
+
+    // Process the day in smaller sub-chunks (6 hours) to stay within time limits
+    const subChunkResults = processDayInSubChunks(currentStart, currentStop, config, properties);
     
-    // Initialize progress tracking with actual counts
-    const totalThreads = emailThreads.length;
-    const totalMessages = emailThreads.reduce((total, thread) => total + thread.emails.length, 0);
+    // Accumulate results from all sub-chunks
+    accumulated.mustDo = (accumulated.mustDo || []).concat(subChunkResults.mustDo || []);
+    accumulated.mustKnow = (accumulated.mustKnow || []).concat(subChunkResults.mustKnow || []);
+    accumulated.totalProcessed = (accumulated.totalProcessed || 0) + (subChunkResults.totalProcessed || 0);
+    accumulated.batchesProcessed = (accumulated.batchesProcessed || 0) + (subChunkResults.batchesProcessed || 0);
+
+    // Advance to next day
+    const nextChunkIndex = chunkIndex + 1;
     properties.setProperties({
-      'totalThreads': totalThreads.toString(),
-      'totalMessages': totalMessages.toString(),
-      'processedThreads': '0',
-      'processedMessages': '0',
-      'processingMessage': `Found ${totalThreads} threads with ${totalMessages} messages. Starting analysis...`
+      'accumulatedResults': JSON.stringify(accumulated),
+      'chunkIndex': String(nextChunkIndex)
     });
-    
-    // Process emails in batches
-    const results = processEmailsInBatches(emailThreads, config);
-    
-    // Store results
-    properties.setProperties({
-      'processingStatus': PROCESSING_STATUS.COMPLETED,
-      'processingMessage': `Processing complete. Found ${results.mustDo.length} actionable items and ${results.mustKnow.length} informational items.`,
-      'processingResults': JSON.stringify(results)
-    });
-    
-    // Send completion email
-    sendProcessingCompleteEmail();
-    
+
+    // If finished all chunks, finalize and send summary
+    if (overallStart.getTime() + (nextChunkIndex * oneDayMs) >= overallEnd.getTime() || nextChunkIndex >= totalChunks) {
+      finalizeChunkedProcessing(accumulated);
+      return;
+    }
+
+    // Chain next trigger for the following day chunk (1 hour delay for Google Apps Script limitation)
+    ScriptApp.newTrigger('processEmailsChunkedStep')
+      .timeBased()
+      .after(60 * 60 * 1000) // 1 hour delay
+      .create();
+
   } catch (error) {
-    console.error('Error in background processing:', error);
+    console.error('Error in chunked background processing:', error);
     properties.setProperties({
       'processingStatus': PROCESSING_STATUS.ERROR,
       'processingMessage': 'Processing failed: ' + error.message
     });
+    // Clear chunk timing on error
+    properties.deleteProperty('chunkStartTime');
+    sendProcessingErrorEmail(error.message);
+  }
+}
+
+/**
+ * Process a single day in smaller sub-chunks (6 hours) to stay within time limits
+ */
+function processDayInSubChunks(dayStart, dayEnd, config, properties) {
+  const sixHoursMs = 6 * 60 * 60 * 1000;
+  const accumulated = { mustDo: [], mustKnow: [], totalProcessed: 0, batchesProcessed: 0 };
+  
+  let currentSubStart = new Date(dayStart);
+  
+  while (currentSubStart.getTime() < dayEnd.getTime()) {
+    const currentSubEnd = new Date(Math.min(currentSubStart.getTime() + sixHoursMs, dayEnd.getTime()));
+    
+    // Update progress message for sub-chunk
+    const subChunkStartTime = currentSubStart.toLocaleString();
+    const subChunkEndTime = currentSubEnd.toLocaleString();
+    properties.setProperty('processingMessage', `Processing ${subChunkStartTime} to ${subChunkEndTime}...`);
+    
+    // Fetch and process threads for this 6-hour window
+    const dateRange = { start: currentSubStart, end: currentSubEnd };
+    const emailThreads = fetchEmailThreadsFromGmail(dateRange);
+    
+    if (emailThreads.length > 0) {
+      const totalThreads = emailThreads.length;
+      const totalMessages = emailThreads.reduce((total, thread) => total + thread.emails.length, 0);
+      
+      // Update progress tracking
+      const currentProcessedThreads = parseInt(properties.getProperty('processedThreads') || '0');
+      const currentProcessedMessages = parseInt(properties.getProperty('processedMessages') || '0');
+      
+      properties.setProperties({
+        'totalThreads': (parseInt(properties.getProperty('totalThreads') || '0') + totalThreads).toString(),
+        'totalMessages': (parseInt(properties.getProperty('totalMessages') || '0') + totalMessages).toString(),
+        'processedThreads': (currentProcessedThreads + totalThreads).toString(),
+        'processedMessages': (currentProcessedMessages + totalMessages).toString()
+      });
+      
+      const results = processEmailsInBatches(emailThreads, config);
+      
+      // Accumulate results from this sub-chunk
+      accumulated.mustDo = accumulated.mustDo.concat(results.mustDo || []);
+      accumulated.mustKnow = accumulated.mustKnow.concat(results.mustKnow || []);
+      accumulated.totalProcessed += (results.totalProcessed || 0);
+      accumulated.batchesProcessed += (results.batchesProcessed || 0);
+    }
+    
+    // Move to next 6-hour sub-chunk
+    currentSubStart = new Date(currentSubStart.getTime() + sixHoursMs);
+  }
+  
+  return accumulated;
+}
+
+/**
+ * Finalize chunked processing: store results and send email
+ */
+function finalizeChunkedProcessing(accumulated) {
+  const properties = PropertiesService.getUserProperties();
+  try {
+    const mustDo = (accumulated && accumulated.mustDo) ? accumulated.mustDo : [];
+    const mustKnow = (accumulated && accumulated.mustKnow) ? accumulated.mustKnow : [];
+    const totalProcessed = (accumulated && accumulated.totalProcessed) ? accumulated.totalProcessed : 0;
+
+    const finalResults = {
+      mustDo: mustDo,
+      mustKnow: mustKnow,
+      totalProcessed: totalProcessed,
+      message: `Processed ${totalProcessed} emails across chunked day-by-day processing.`
+    };
+
+    properties.setProperties({
+      'processingStatus': PROCESSING_STATUS.COMPLETED,
+      'processingMessage': `Processing complete. Found ${mustDo.length} actionable items and ${mustKnow.length} informational items.`,
+      'processingResults': JSON.stringify(finalResults)
+    });
+
+    // Clear chunked-specific state
+    properties.deleteProperty('chunkCurrentStart');
+    properties.deleteProperty('chunkEnd');
+    properties.deleteProperty('chunkIndex');
+    properties.deleteProperty('chunkTotalChunks');
+    properties.deleteProperty('accumulatedResults');
+    properties.deleteProperty('chunkStartTime');
+
+    sendProcessingCompleteEmail();
+  } catch (error) {
+    console.error('Error finalizing chunked processing:', error);
+    properties.setProperties({
+      'processingStatus': PROCESSING_STATUS.ERROR,
+      'processingMessage': 'Processing failed: ' + error.message
+    });
+    // Clear chunk timing on error
+    properties.deleteProperty('chunkStartTime');
     sendProcessingErrorEmail(error.message);
   }
 }
@@ -309,17 +433,18 @@ function checkProcessingStatus() {
     const processedMessages = parseInt(properties.getProperty('processedMessages') || '0');
     const totalMessages = parseInt(properties.getProperty('totalMessages') || '0');
     
-    // Check for timeout
-    if (startTimeStr) {
-      const startTime = new Date(startTimeStr);
+    // Check for chunk timeout (not overall processing timeout)
+    const chunkStartTimeStr = properties.getProperty('chunkStartTime');
+    if (chunkStartTimeStr) {
+      const chunkStartTime = new Date(chunkStartTimeStr);
       const currentTime = new Date();
-      const timeDiff = currentTime.getTime() - startTime.getTime();
+      const timeDiff = currentTime.getTime() - chunkStartTime.getTime();
       
       if (timeDiff > PROCESSING_TIMEOUT_MS) {
-        // Processing has timed out - save latest stats before clearing
+        // Current chunk has timed out - save latest stats before clearing
         saveLatestRunStats(properties, PROCESSING_STATUS.TIMEOUT, 'Processing timed out after 10 minutes. Please try again with a smaller time range.');
         
-        // Clear processing status
+        // Clear processing status and chunk timing
         properties.deleteProperty('processingStatus');
         properties.deleteProperty('processingMessage');
         properties.deleteProperty('processingResults');
@@ -329,6 +454,7 @@ function checkProcessingStatus() {
         properties.deleteProperty('totalThreads');
         properties.deleteProperty('processedMessages');
         properties.deleteProperty('totalMessages');
+        properties.deleteProperty('chunkStartTime');
         
         // Send timeout notification email
         try {
@@ -410,6 +536,7 @@ function checkProcessingStatus() {
     properties.deleteProperty('totalThreads');
     properties.deleteProperty('processedMessages');
     properties.deleteProperty('totalMessages');
+    properties.deleteProperty('chunkStartTime');
     
     // Show latest run statistics
     return buildLatestRunStatsCard();
@@ -449,6 +576,7 @@ function checkProcessingStatus() {
     properties.deleteProperty('totalThreads');
     properties.deleteProperty('processedMessages');
     properties.deleteProperty('totalMessages');
+    properties.deleteProperty('chunkStartTime');
     
     // Show latest run statistics
     return buildLatestRunStatsCard();
@@ -488,6 +616,7 @@ function checkProcessingStatus() {
     properties.deleteProperty('totalThreads');
     properties.deleteProperty('processedMessages');
     properties.deleteProperty('totalMessages');
+    properties.deleteProperty('chunkStartTime');
     
     // Show latest run statistics
     return buildLatestRunStatsCard();
