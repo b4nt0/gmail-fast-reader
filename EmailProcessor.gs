@@ -108,14 +108,26 @@ function shouldIgnoreEmail(email, userEmail, addonName) {
  */
 function fetchEmailThreadsFromGmail(dateRange) {
   try {
-    const query = `after:${Math.floor(dateRange.start.getTime() / 1000)} before:${Math.floor(dateRange.end.getTime() / 1000)}`;
+    // Get configuration for filtering options
+    const config = getConfiguration();
+    
+    // Build base query with date range
+    let query = `after:${Math.floor(dateRange.start.getTime() / 1000)} before:${Math.floor(dateRange.end.getTime() / 1000)}`;
+    
+    // Add filtering criteria based on configuration
+    if (config.unreadOnly) {
+      query += ' is:unread';
+    }
+    
+    if (config.inboxOnly) {
+      query += ' in:inbox';
+    }
     
     const threads = GmailApp.search(query, 0, 100); // Get more threads initially
     const emailThreads = [];
     
     // Get user email and addon name for filtering
     const userEmail = getUserEmailAddress();
-    const config = getConfiguration();
     const addonName = config.addonName;
     
     threads.forEach(thread => {

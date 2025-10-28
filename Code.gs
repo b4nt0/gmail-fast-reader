@@ -113,7 +113,9 @@ function handleConfigSubmit(e) {
       mustDoTopics: getFormValue(formInputs.mustDoTopics),
       mustKnowTopics: getFormValue(formInputs.mustKnowTopics),
       mustDoOther: getFormBoolean(formInputs.mustDoOther),
-      mustKnowOther: getFormBoolean(formInputs.mustKnowOther)
+      mustKnowOther: getFormBoolean(formInputs.mustKnowOther),
+      unreadOnly: getFormBoolean(formInputs.unreadOnly),
+      inboxOnly: getFormBoolean(formInputs.inboxOnly)
     });
     
     return buildConfigSuccessCard();

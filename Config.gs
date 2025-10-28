@@ -15,7 +15,9 @@ function getConfiguration() {
     mustDoTopics: properties.getProperty('mustDoTopics') || '',
     mustKnowTopics: properties.getProperty('mustKnowTopics') || '',
     mustDoOther: properties.getProperty('mustDoOther') === 'true',
-    mustKnowOther: properties.getProperty('mustKnowOther') === 'true'
+    mustKnowOther: properties.getProperty('mustKnowOther') === 'true',
+    unreadOnly: properties.getProperty('unreadOnly') === 'true',
+    inboxOnly: properties.getProperty('inboxOnly') === 'true'
   };
 }
 
@@ -49,7 +51,9 @@ function saveConfiguration(config) {
     'mustDoTopics': safeString(config.mustDoTopics, ''),
     'mustKnowTopics': safeString(config.mustKnowTopics, ''),
     'mustDoOther': safeBoolean(config.mustDoOther) ? 'true' : 'false',
-    'mustKnowOther': safeBoolean(config.mustKnowOther) ? 'true' : 'false'
+    'mustKnowOther': safeBoolean(config.mustKnowOther) ? 'true' : 'false',
+    'unreadOnly': safeBoolean(config.unreadOnly) ? 'true' : 'false',
+    'inboxOnly': safeBoolean(config.inboxOnly) ? 'true' : 'false'
   });
 }
 
