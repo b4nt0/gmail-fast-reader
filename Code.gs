@@ -306,11 +306,31 @@ function finalizeChunkedProcessing(accumulated) {
     const mustKnow = (accumulated && accumulated.mustKnow) ? accumulated.mustKnow : [];
     const totalProcessed = (accumulated && accumulated.totalProcessed) ? accumulated.totalProcessed : 0;
 
+    // Get time range information before clearing properties
+    const timeRange = properties.getProperty('processingTimeRange') || '1day';
+    const chunkStartIso = properties.getProperty('chunkCurrentStart');
+    const chunkEndIso = properties.getProperty('chunkEnd');
+    
+    // Calculate actual start and end dates
+    let actualStartDate, actualEndDate;
+    if (chunkStartIso && chunkEndIso) {
+      actualStartDate = new Date(chunkStartIso);
+      actualEndDate = new Date(chunkEndIso);
+    } else {
+      // Fallback to calculating from timeRange
+      const dateRange = calculateDateRange(timeRange);
+      actualStartDate = dateRange.start;
+      actualEndDate = dateRange.end;
+    }
+
     const finalResults = {
       mustDo: mustDo,
       mustKnow: mustKnow,
       totalProcessed: totalProcessed,
-      message: `Processed ${totalProcessed} emails across chunked day-by-day processing.`
+      message: `Processed ${totalProcessed} emails across chunked day-by-day processing.`,
+      timeRange: timeRange,
+      actualStartDate: actualStartDate.toISOString(),
+      actualEndDate: actualEndDate.toISOString()
     };
 
     properties.setProperties({
@@ -327,7 +347,9 @@ function finalizeChunkedProcessing(accumulated) {
     properties.deleteProperty('accumulatedResults');
     properties.deleteProperty('chunkStartTime');
 
-    sendProcessingCompleteEmail();
+    if (mustDo.length > 0 || mustKnow.length > 0) {
+      sendProcessingCompleteEmail();
+    }
   } catch (error) {
     console.error('Error finalizing chunked processing:', error);
     properties.setProperties({
@@ -349,7 +371,20 @@ function sendProcessingCompleteEmail() {
   const config = getConfiguration();
   
   const htmlContent = generateSummaryHTML(results, config);
-  const subject = `${config.addonName} - Processing Complete - ${new Date().toLocaleDateString()}`;
+  
+  // Format time range for subject
+  let timeRangeSubject = 'Processing Complete';
+  if (results.actualStartDate && results.actualEndDate) {
+    const startDate = new Date(results.actualStartDate);
+    const endDate = new Date(results.actualEndDate);
+    const startFormatted = startDate.toISOString().slice(0, 16).replace('T', ' ');
+    const endFormatted = endDate.toISOString().slice(0, 16).replace('T', ' ');
+    timeRangeSubject = `Summary - ${startFormatted} to ${endFormatted}`;
+  } else if (results.timeRange) {
+    timeRangeSubject = `Summary (${results.timeRange})`;
+  }
+  
+  const subject = `${config.addonName} - ${timeRangeSubject}`;
   
   GmailApp.sendEmail(
     getUserEmailAddress(),

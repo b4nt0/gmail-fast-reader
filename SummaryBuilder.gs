@@ -57,7 +57,20 @@ function sendSummaryEmail(e) {
     const config = getConfiguration();
     
     const htmlContent = generateSummaryHTML(results, config);
-    const subject = `${config.addonName} - Daily Summary - ${new Date().toLocaleDateString()}`;
+    
+    // Format time range for subject
+    let timeRangeSubject = 'Email Summary';
+    if (results.actualStartDate && results.actualEndDate) {
+      const startDate = new Date(results.actualStartDate);
+      const endDate = new Date(results.actualEndDate);
+      const startFormatted = startDate.toISOString().slice(0, 16).replace('T', ' ');
+      const endFormatted = endDate.toISOString().slice(0, 16).replace('T', ' ');
+      timeRangeSubject = `Email Summary for ${startFormatted} - ${endFormatted}`;
+    } else if (results.timeRange) {
+      timeRangeSubject = `Email Summary (${results.timeRange})`;
+    }
+    
+    const subject = `${config.addonName} - ${timeRangeSubject}`;
     
     GmailApp.sendEmail(
       getUserEmailAddress(),
@@ -98,6 +111,19 @@ function generateSummaryHTML(results, config) {
   const today = now.toISOString().split('T')[0];
   const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0];
   
+  // Format time range for title
+  let timeRangeTitle = 'Email Summary';
+  if (results.actualStartDate && results.actualEndDate) {
+    const startDate = new Date(results.actualStartDate);
+    const endDate = new Date(results.actualEndDate);
+    const startFormatted = startDate.toISOString().slice(0, 16).replace('T', ' ');
+    const endFormatted = endDate.toISOString().slice(0, 16).replace('T', ' ');
+    timeRangeTitle = `Email Summary for ${startFormatted} - ${endFormatted}`;
+  } else if (results.timeRange) {
+    // Fallback to time range string if actual dates not available
+    timeRangeTitle = `Email Summary (${results.timeRange})`;
+  }
+  
   let html = `
     <!DOCTYPE html>
     <html lang="en">
@@ -122,7 +148,7 @@ function generateSummaryHTML(results, config) {
     </head>
     <body>
       <div class="header">
-        <h1>${config.addonName} - Daily Summary</h1>
+        <h1>${config.addonName} - ${timeRangeTitle}</h1>
         <p>Generated on ${now.toLocaleDateString()} at ${now.toLocaleTimeString()}</p>
         <p>Total emails processed: ${results.totalProcessed}</p>
       </div>
