@@ -42,6 +42,34 @@ function isProcessingRunning() {
 }
 
 /**
+ * Cleanup helpers for PropertiesService state
+ */
+function cleanupProcessingState(properties) {
+  properties.deleteProperty('processingStatus');
+  properties.deleteProperty('processingMessage');
+  properties.deleteProperty('processingResults');
+  properties.deleteProperty('processingStartTime');
+  properties.deleteProperty('processingProgress');
+  properties.deleteProperty('processedThreads');
+  properties.deleteProperty('totalThreads');
+  properties.deleteProperty('processedMessages');
+  properties.deleteProperty('totalMessages');
+}
+
+function cleanupChunkState(properties) {
+  properties.deleteProperty('chunkCurrentStart');
+  properties.deleteProperty('chunkEnd');
+  properties.deleteProperty('chunkIndex');
+  properties.deleteProperty('chunkTotalChunks');
+  properties.deleteProperty('accumulatedResults');
+  properties.deleteProperty('chunkStartTime');
+}
+
+function cleanupChunkTiming(properties) {
+  properties.deleteProperty('chunkStartTime');
+}
+
+/**
  * Main entry point when add-on is opened
  */
 function onHomepageTrigger(e) {
@@ -239,7 +267,7 @@ function processEmailsChunkedStep() {
       'processingMessage': 'Processing failed: ' + error.message
     });
     // Clear chunk timing on error
-    properties.deleteProperty('chunkStartTime');
+    cleanupChunkTiming(properties);
     sendProcessingErrorEmail(error.message);
   }
 }
@@ -340,12 +368,7 @@ function finalizeChunkedProcessing(accumulated) {
     });
 
     // Clear chunked-specific state
-    properties.deleteProperty('chunkCurrentStart');
-    properties.deleteProperty('chunkEnd');
-    properties.deleteProperty('chunkIndex');
-    properties.deleteProperty('chunkTotalChunks');
-    properties.deleteProperty('accumulatedResults');
-    properties.deleteProperty('chunkStartTime');
+    cleanupChunkState(properties);
 
     if (mustDo.length > 0 || mustKnow.length > 0) {
       sendProcessingCompleteEmail();
@@ -357,7 +380,7 @@ function finalizeChunkedProcessing(accumulated) {
       'processingMessage': 'Processing failed: ' + error.message
     });
     // Clear chunk timing on error
-    properties.deleteProperty('chunkStartTime');
+    cleanupChunkTiming(properties);
     sendProcessingErrorEmail(error.message);
   }
 }
@@ -480,16 +503,8 @@ function checkProcessingStatus() {
         saveLatestRunStats(properties, PROCESSING_STATUS.TIMEOUT, 'Processing timed out after 10 minutes. Please try again with a smaller time range.');
         
         // Clear processing status and chunk timing
-        properties.deleteProperty('processingStatus');
-        properties.deleteProperty('processingMessage');
-        properties.deleteProperty('processingResults');
-        properties.deleteProperty('processingStartTime');
-        properties.deleteProperty('processingProgress');
-        properties.deleteProperty('processedThreads');
-        properties.deleteProperty('totalThreads');
-        properties.deleteProperty('processedMessages');
-        properties.deleteProperty('totalMessages');
-        properties.deleteProperty('chunkStartTime');
+        cleanupProcessingState(properties);
+        cleanupChunkTiming(properties);
         
         // Send timeout notification email
         try {
@@ -562,16 +577,8 @@ function checkProcessingStatus() {
     });
     
     // Clear processing status
-    properties.deleteProperty('processingStatus');
-    properties.deleteProperty('processingMessage');
-    properties.deleteProperty('processingResults');
-    properties.deleteProperty('processingStartTime');
-    properties.deleteProperty('processingProgress');
-    properties.deleteProperty('processedThreads');
-    properties.deleteProperty('totalThreads');
-    properties.deleteProperty('processedMessages');
-    properties.deleteProperty('totalMessages');
-    properties.deleteProperty('chunkStartTime');
+    cleanupProcessingState(properties);
+    cleanupChunkTiming(properties);
     
     // Show latest run statistics
     return buildLatestRunStatsCard();
@@ -603,15 +610,8 @@ function checkProcessingStatus() {
     });
     
     // Clear processing status
-    properties.deleteProperty('processingStatus');
-    properties.deleteProperty('processingMessage');
-    properties.deleteProperty('processingStartTime');
-    properties.deleteProperty('processingProgress');
-    properties.deleteProperty('processedThreads');
-    properties.deleteProperty('totalThreads');
-    properties.deleteProperty('processedMessages');
-    properties.deleteProperty('totalMessages');
-    properties.deleteProperty('chunkStartTime');
+    cleanupProcessingState(properties);
+    cleanupChunkTiming(properties);
     
     // Show latest run statistics
     return buildLatestRunStatsCard();
@@ -643,15 +643,8 @@ function checkProcessingStatus() {
     });
     
     // Clear processing status
-    properties.deleteProperty('processingStatus');
-    properties.deleteProperty('processingMessage');
-    properties.deleteProperty('processingStartTime');
-    properties.deleteProperty('processingProgress');
-    properties.deleteProperty('processedThreads');
-    properties.deleteProperty('totalThreads');
-    properties.deleteProperty('processedMessages');
-    properties.deleteProperty('totalMessages');
-    properties.deleteProperty('chunkStartTime');
+    cleanupProcessingState(properties);
+    cleanupChunkTiming(properties);
     
     // Show latest run statistics
     return buildLatestRunStatsCard();
