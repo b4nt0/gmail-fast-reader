@@ -230,6 +230,9 @@ function processEmailsInBatches(emailThreads, config) {
       const batchResults = analyzeEmailsWithOpenAI(currentBatch, config);
       mergeResults(allResults, batchResults);
       
+      // Star interesting emails from this batch
+      starInterestingEmails(batchResults, config);
+      
       // Update progress after batch processing
       processedThreads += currentBatch.length;
       processedMessages += currentBatch.reduce((total, t) => total + t.emails.length, 0);
@@ -254,6 +257,10 @@ function processEmailsInBatches(emailThreads, config) {
       
       const batchResults = analyzeEmailsWithOpenAI([thread], config);
       mergeResults(allResults, batchResults);
+      
+      // Star interesting emails from this single thread
+      starInterestingEmails(batchResults, config);
+      
       allResults.batchesProcessed++;
       
       // Update progress after single thread processing
@@ -275,6 +282,10 @@ function processEmailsInBatches(emailThreads, config) {
     
     const batchResults = analyzeEmailsWithOpenAI(currentBatch, config);
     mergeResults(allResults, batchResults);
+    
+    // Star interesting emails from this final batch
+    starInterestingEmails(batchResults, config);
+    
     allResults.batchesProcessed++;
     
     // Update final progress
@@ -532,5 +543,70 @@ function parseOpenAIResponse(response) {
     console.error('Error parsing OpenAI response:', error);
     console.error('Response was:', response);
     throw new Error('Failed to parse OpenAI response: ' + error.message);
+  }
+}
+
+/**
+ * Star interesting emails based on configuration
+ */
+function starInterestingEmails(results, config) {
+  if (!config.starInterestingEmails) {
+    return; // Feature is disabled
+  }
+  
+  try {
+    const allInterestingEmails = [...(results.mustDo || []), ...(results.mustKnow || [])];
+    
+    for (const email of allInterestingEmails) {
+      try {
+        // Try to get the message by ID first
+        let message = null;
+        if (email.emailId) {
+          try {
+            message = GmailApp.getMessageById(email.emailId);
+          } catch (error) {
+            console.warn(`Could not find message by ID ${email.emailId}:`, error);
+          }
+        }
+        
+        // If not found by ID, try by RFC822 Message ID
+        if (!message && email.rfc822MessageId) {
+          try {
+            const threads = GmailApp.search(`rfc822msgid:${email.rfc822MessageId}`);
+            if (threads.length > 0) {
+              const messages = threads[0].getMessages();
+              // Find the specific message by matching RFC822 Message ID
+              for (const msg of messages) {
+                try {
+                  const rawContent = msg.getRawContent();
+                  const messageIdMatch = rawContent.match(/Message-ID:\s*<([^>]+)>/i);
+                  if (messageIdMatch && messageIdMatch[1] === email.rfc822MessageId) {
+                    message = msg;
+                    break;
+                  }
+                } catch (error) {
+                  console.warn(`Error checking RFC822 Message ID for message ${msg.getId()}:`, error);
+                }
+              }
+            }
+          } catch (error) {
+            console.warn(`Could not find message by RFC822 Message ID ${email.rfc822MessageId}:`, error);
+          }
+        }
+        
+        // Star the message if found
+        if (message) {
+          message.star();
+          console.log(`Starred email: ${email.subject} from ${email.sender}`);
+        } else {
+          console.warn(`Could not find email to star: ${email.subject} from ${email.sender}`);
+        }
+      } catch (error) {
+        console.error(`Error starring email ${email.subject}:`, error);
+      }
+    }
+  } catch (error) {
+    console.error('Error in starInterestingEmails:', error);
+    // Don't throw error to avoid breaking the main processing flow
   }
 }

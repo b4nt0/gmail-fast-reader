@@ -115,7 +115,8 @@ function handleConfigSubmit(e) {
       mustDoOther: getFormBoolean(formInputs.mustDoOther),
       mustKnowOther: getFormBoolean(formInputs.mustKnowOther),
       unreadOnly: getFormBoolean(formInputs.unreadOnly),
-      inboxOnly: getFormBoolean(formInputs.inboxOnly)
+      inboxOnly: getFormBoolean(formInputs.inboxOnly),
+      starInterestingEmails: getFormBoolean(formInputs.starInterestingEmails)
     });
     
     return buildConfigSuccessCard();
