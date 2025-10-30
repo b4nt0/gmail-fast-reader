@@ -18,7 +18,8 @@ function getConfiguration() {
     mustKnowOther: properties.getProperty('mustKnowOther') === 'true',
     unreadOnly: properties.getProperty('unreadOnly') === 'true',
     inboxOnly: properties.getProperty('inboxOnly') === 'true',
-    starInterestingEmails: properties.getProperty('starInterestingEmails') === 'true'
+    mustDoLabel: properties.getProperty('mustDoLabel') || '',
+    mustKnowLabel: properties.getProperty('mustKnowLabel') || ''
   };
 }
 
@@ -55,7 +56,8 @@ function saveConfiguration(config) {
     'mustKnowOther': safeBoolean(config.mustKnowOther) ? 'true' : 'false',
     'unreadOnly': safeBoolean(config.unreadOnly) ? 'true' : 'false',
     'inboxOnly': safeBoolean(config.inboxOnly) ? 'true' : 'false',
-    'starInterestingEmails': safeBoolean(config.starInterestingEmails) ? 'true' : 'false'
+    'mustDoLabel': safeString(config.mustDoLabel, ''),
+    'mustKnowLabel': safeString(config.mustKnowLabel, '')
   });
 }
 

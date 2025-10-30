@@ -230,8 +230,8 @@ function processEmailsInBatches(emailThreads, config) {
       const batchResults = analyzeEmailsWithOpenAI(currentBatch, config);
       mergeResults(allResults, batchResults);
       
-      // Star interesting emails from this batch
-      starInterestingEmails(batchResults, config);
+      // Apply labels to interesting emails from this batch
+      applyLabelsToInterestingEmails(batchResults, config);
       
       // Update progress after batch processing
       processedThreads += currentBatch.length;
@@ -258,8 +258,8 @@ function processEmailsInBatches(emailThreads, config) {
       const batchResults = analyzeEmailsWithOpenAI([thread], config);
       mergeResults(allResults, batchResults);
       
-      // Star interesting emails from this single thread
-      starInterestingEmails(batchResults, config);
+      // Apply labels to interesting emails from this single thread
+      applyLabelsToInterestingEmails(batchResults, config);
       
       allResults.batchesProcessed++;
       
@@ -283,8 +283,8 @@ function processEmailsInBatches(emailThreads, config) {
     const batchResults = analyzeEmailsWithOpenAI(currentBatch, config);
     mergeResults(allResults, batchResults);
     
-    // Star interesting emails from this final batch
-    starInterestingEmails(batchResults, config);
+    // Apply labels to interesting emails from this final batch
+    applyLabelsToInterestingEmails(batchResults, config);
     
     allResults.batchesProcessed++;
     
@@ -547,66 +547,66 @@ function parseOpenAIResponse(response) {
 }
 
 /**
- * Star interesting emails based on configuration
+ * Apply labels to interesting emails based on configuration
  */
-function starInterestingEmails(results, config) {
-  if (!config.starInterestingEmails) {
-    return; // Feature is disabled
-  }
-  
+function applyLabelsToInterestingEmails(results, config) {
   try {
-    const allInterestingEmails = [...(results.mustDo || []), ...(results.mustKnow || [])];
-    
-    for (const email of allInterestingEmails) {
-      try {
-        // Try to get the message by ID first
-        let message = null;
-        if (email.emailId) {
-          try {
-            message = GmailApp.getMessageById(email.emailId);
-          } catch (error) {
-            console.warn(`Could not find message by ID ${email.emailId}:`, error);
-          }
+    function labelEmails(emails, labelName) {
+      if (!labelName) return;
+      let label = GmailApp.getUserLabelByName(labelName);
+      if (!label) {
+        try {
+          label = GmailApp.createLabel(labelName);
+        } catch (error) {
+          console.warn(`Could not create label ${labelName}:`, error);
+          return;
         }
-        
-        // If not found by ID, try by RFC822 Message ID
-        if (!message && email.rfc822MessageId) {
-          try {
-            const threads = GmailApp.search(`rfc822msgid:${email.rfc822MessageId}`);
-            if (threads.length > 0) {
-              const messages = threads[0].getMessages();
-              // Find the specific message by matching RFC822 Message ID
-              for (const msg of messages) {
-                try {
-                  const rawContent = msg.getRawContent();
-                  const messageIdMatch = rawContent.match(/Message-ID:\s*<([^>]+)>/i);
-                  if (messageIdMatch && messageIdMatch[1] === email.rfc822MessageId) {
-                    message = msg;
-                    break;
-                  }
-                } catch (error) {
-                  console.warn(`Error checking RFC822 Message ID for message ${msg.getId()}:`, error);
+      }
+      for (const email of emails || []) {
+        try {
+          let message = null;
+          if (email.emailId) {
+            try { message = GmailApp.getMessageById(email.emailId); } catch (err) { /* ignore */ }
+          }
+          if (!message && email.rfc822MessageId) {
+            try {
+              const threads = GmailApp.search(`rfc822msgid:${email.rfc822MessageId}`);
+              if (threads.length > 0) {
+                const messages = threads[0].getMessages();
+                for (const msg of messages) {
+                  try {
+                    const rawContent = msg.getRawContent();
+                    const match = rawContent.match(/Message-ID:\s*<([^>]+)>/i);
+                    if (match && match[1] === email.rfc822MessageId) {
+                      message = msg;
+                      break;
+                    }
+                  } catch (innerErr) { /* ignore */ }
+                }
+                if (!message) {
+                  // Fallback: label the whole thread
+                  try { threads[0].addLabel(label); } catch (labelErr) { /* ignore */ }
+                  continue;
                 }
               }
-            }
-          } catch (error) {
-            console.warn(`Could not find message by RFC822 Message ID ${email.rfc822MessageId}:`, error);
+            } catch (searchErr) { /* ignore */ }
           }
+          if (message) {
+            try { message.getThread().addLabel(label); } catch (labelErr) { /* ignore */ }
+          }
+        } catch (error) {
+          console.error(`Error labeling email ${email.subject}:`, error);
         }
-        
-        // Star the message if found
-        if (message) {
-          message.star();
-          console.log(`Starred email: ${email.subject} from ${email.sender}`);
-        } else {
-          console.warn(`Could not find email to star: ${email.subject} from ${email.sender}`);
-        }
-      } catch (error) {
-        console.error(`Error starring email ${email.subject}:`, error);
       }
     }
+
+    if (config.mustDoLabel) {
+      labelEmails(results.mustDo, config.mustDoLabel);
+    }
+    if (config.mustKnowLabel) {
+      labelEmails(results.mustKnow, config.mustKnowLabel);
+    }
   } catch (error) {
-    console.error('Error in starInterestingEmails:', error);
-    // Don't throw error to avoid breaking the main processing flow
+    console.error('Error in applyLabelsToInterestingEmails:', error);
   }
 }

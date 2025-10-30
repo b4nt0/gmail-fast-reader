@@ -475,13 +475,40 @@ function handleConfigSubmit(e) {
       mustKnowOther: getFormBoolean(formInputs.mustKnowOther),
       unreadOnly: getFormBoolean(formInputs.unreadOnly),
       inboxOnly: getFormBoolean(formInputs.inboxOnly),
-      starInterestingEmails: getFormBoolean(formInputs.starInterestingEmails),
+      mustDoLabel: getFormValue(formInputs.mustDoLabel),
+      mustKnowLabel: getFormValue(formInputs.mustKnowLabel),
       automaticScanning: getFormBoolean(formInputs.automaticScanning)
     });
     
     return buildConfigSuccessCard();
   } catch (error) {
     return buildErrorCard('Failed to save configuration: ' + error.message);
+  }
+}
+
+/**
+ * Suggestions handler for label text inputs
+ */
+function handleLabelSuggestions(e) {
+  try {
+    const query = (e && e.parameter && e.parameter.query) || '';
+    const labels = GmailApp.getUserLabels();
+    const normalizedQuery = query.toLowerCase();
+    const suggestions = CardService.newSuggestions();
+    for (var i = 0; i < labels.length; i++) {
+      var name = labels[i].getName();
+      if (!normalizedQuery || name.toLowerCase().indexOf(normalizedQuery) !== -1) {
+        suggestions.addSuggestion(name);
+      }
+    }
+    return CardService.newSuggestionsResponseBuilder()
+      .setSuggestions(suggestions)
+      .build();
+  } catch (error) {
+    // On error, return empty suggestions
+    return CardService.newSuggestionsResponseBuilder()
+      .setSuggestions(CardService.newSuggestions())
+      .build();
   }
 }
 
