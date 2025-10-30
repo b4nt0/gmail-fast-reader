@@ -3,9 +3,78 @@
  */
 
 /**
- * Check if processing is currently running
+ * Lock mechanism for preventing concurrent workflow execution
+ */
+
+/**
+ * Acquire a lock for the specified workflow type
+ */
+function lock(workflowType) {
+  const properties = PropertiesService.getUserProperties();
+  const lockData = {
+    type: workflowType,
+    timestamp: new Date().toISOString()
+  };
+  properties.setProperty('processingLock', JSON.stringify(lockData));
+}
+
+/**
+ * Release the current lock
+ */
+function unlock() {
+  const properties = PropertiesService.getUserProperties();
+  properties.deleteProperty('processingLock');
+}
+
+/**
+ * Check if a lock exists and is still valid
+ * Returns: { locked: boolean, type: string|null, expired: boolean }
+ */
+function checkLock() {
+  const properties = PropertiesService.getUserProperties();
+  const lockStr = properties.getProperty('processingLock');
+  
+  if (!lockStr) {
+    return { locked: false, type: null, expired: false };
+  }
+  
+  try {
+    const lockData = JSON.parse(lockStr);
+    const lockTime = new Date(lockData.timestamp);
+    const currentTime = new Date();
+    const timeDiff = currentTime.getTime() - lockTime.getTime();
+    
+    // Check if lock has expired (10 minutes timeout)
+    if (timeDiff > PROCESSING_TIMEOUT_MS) {
+      // Auto-release expired lock
+      unlock();
+      return { locked: false, type: null, expired: true };
+    }
+    
+    return { 
+      locked: true, 
+      type: lockData.type, 
+      expired: false 
+    };
+  } catch (error) {
+    console.error('Error parsing lock data:', error);
+    // Clear invalid lock data
+    unlock();
+    return { locked: false, type: null, expired: false };
+  }
+}
+
+/**
+ * Check if processing is currently running (updated to use new lock mechanism)
  */
 function isProcessingRunning() {
+  const lockStatus = checkLock();
+  
+  if (!lockStatus.locked) {
+    return false;
+  }
+  
+  // For backward compatibility, also check the old processingStatus
   const properties = PropertiesService.getUserProperties();
   const status = properties.getProperty('processingStatus');
   
@@ -43,6 +112,7 @@ function isProcessingRunning() {
 
 /**
  * Cleanup helpers for PropertiesService state
+ * Note: Does NOT clean passive workflow properties (passiveLastProcessedTimestamp, passiveLastProcessedMessageId)
  */
 function cleanupProcessingState(properties) {
   properties.deleteProperty('processingStatus');
@@ -54,6 +124,7 @@ function cleanupProcessingState(properties) {
   properties.deleteProperty('totalThreads');
   properties.deleteProperty('processedMessages');
   properties.deleteProperty('totalMessages');
+  // Note: Intentionally NOT cleaning passive workflow properties
 }
 
 function cleanupChunkState(properties) {
@@ -70,6 +141,259 @@ function cleanupChunkTiming(properties) {
 }
 
 /**
+ * Passive workflow - runs hourly to process new emails
+ */
+function runPassiveWorkflow() {
+  const properties = PropertiesService.getUserProperties();
+  
+  try {
+    // Check if another workflow is already running
+    const lockStatus = checkLock();
+    if (lockStatus.locked) {
+      console.log(`Passive workflow skipped - ${lockStatus.type} workflow is already running`);
+      return;
+    }
+    
+    // Acquire lock for passive workflow
+    lock('passive');
+    
+    // Get configuration
+    const config = getConfiguration();
+    if (!config.openaiApiKey) {
+      console.log('Passive workflow skipped - OpenAI API key not configured');
+      unlock();
+      return;
+    }
+    
+    // Calculate date range for passive workflow
+    const dateRange = calculatePassiveWorkflowDateRange();
+    if (!dateRange) {
+      console.log('Passive workflow skipped - no new emails to process');
+      unlock();
+      return;
+    }
+    
+    console.log(`Passive workflow processing emails from ${dateRange.start.toISOString()} to ${dateRange.end.toISOString()}`);
+    
+    // Fetch and filter emails for passive workflow
+    const emailThreads = fetchEmailThreadsForPassiveWorkflow(dateRange);
+    
+    if (emailThreads.length === 0) {
+      console.log('Passive workflow completed - no emails found in range');
+      unlock();
+      return;
+    }
+    
+    // Process emails using existing batch processing logic
+    const results = processEmailsInBatches(emailThreads, config);
+    
+    // Only send summary email if interesting emails were found
+    if (results.mustDo.length > 0 || results.mustKnow.length > 0) {
+      // Update tracking properties with first processed message
+      if (emailThreads.length > 0 && emailThreads[0].emails.length > 0) {
+        const firstMessage = emailThreads[0].emails[0];
+        properties.setProperties({
+          'passiveLastProcessedTimestamp': firstMessage.date.toISOString(),
+          'passiveLastProcessedMessageId': firstMessage.id
+        });
+      }
+      
+      // Send summary email
+      const finalResults = {
+        mustDo: results.mustDo || [],
+        mustKnow: results.mustKnow || [],
+        totalProcessed: results.totalProcessed || 0,
+        message: `Processed ${results.totalProcessed || 0} emails in passive workflow.`,
+        timeRange: 'passive',
+        actualStartDate: dateRange.start.toISOString(),
+        actualEndDate: dateRange.end.toISOString()
+      };
+      
+      const htmlContent = generateSummaryHTML(finalResults, config);
+      const subject = `${config.addonName} - Passive Workflow Summary - ${new Date().toLocaleDateString()}`;
+      
+      GmailApp.sendEmail(
+        getUserEmailAddress(),
+        subject,
+        '',
+        {
+          htmlBody: htmlContent,
+          name: config.addonName
+        }
+      );
+      
+      console.log(`Passive workflow completed - sent summary with ${finalResults.mustDo.length} actionable and ${finalResults.mustKnow.length} informational items`);
+    } else {
+      console.log('Passive workflow completed - no interesting emails found');
+    }
+    
+  } catch (error) {
+    console.error('Error in passive workflow:', error);
+    
+    // Send error notification
+    try {
+      const config = getConfiguration();
+      const subject = `${config.addonName} - Passive Workflow Error - ${new Date().toLocaleDateString()}`;
+      const body = `Passive workflow failed with the following error:\n\n${error.message}\n\nPlease check your configuration and try again.`;
+      
+      GmailApp.sendEmail(
+        getUserEmailAddress(),
+        subject,
+        body,
+        {
+          name: config.addonName
+        }
+      );
+    } catch (emailError) {
+      console.error('Failed to send error email:', emailError);
+    }
+  } finally {
+    // Always release lock
+    unlock();
+  }
+}
+
+/**
+ * Calculate date range for passive workflow
+ */
+function calculatePassiveWorkflowDateRange() {
+  const properties = PropertiesService.getUserProperties();
+  const now = new Date();
+  
+  // Get last processed timestamp
+  const lastProcessedTimestampStr = properties.getProperty('passiveLastProcessedTimestamp');
+  
+  let startDate;
+  
+  if (lastProcessedTimestampStr) {
+    const lastProcessedTimestamp = new Date(lastProcessedTimestampStr);
+    // Add 30 minutes safety buffer
+    const safetyBuffer = new Date(lastProcessedTimestamp.getTime() + 30 * 60 * 1000);
+    startDate = safetyBuffer;
+  } else {
+    // First run - start from 24 hours ago
+    startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  }
+  
+  // Ensure we don't go back more than 24 hours
+  const maxLookback = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  if (startDate < maxLookback) {
+    startDate = maxLookback;
+  }
+  
+  // If start date is not before end date, no new emails to process
+  if (startDate >= now) {
+    return null;
+  }
+  
+  return {
+    start: startDate,
+    end: now
+  };
+}
+
+/**
+ * Fetch email threads for passive workflow with message filtering
+ */
+function fetchEmailThreadsForPassiveWorkflow(dateRange) {
+  try {
+    // Get configuration for filtering options
+    const config = getConfiguration();
+    
+    // Build base query with date range
+    let query = `after:${Math.floor(dateRange.start.getTime() / 1000)} before:${Math.floor(dateRange.end.getTime() / 1000)}`;
+    
+    // Add filtering criteria based on configuration
+    if (config.unreadOnly) {
+      query += ' is:unread';
+    }
+    
+    if (config.inboxOnly) {
+      query += ' in:inbox';
+    }
+    
+    const threads = GmailApp.search(query, 0, 100);
+    const emailThreads = [];
+    
+    // Get user email and addon name for filtering
+    const userEmail = getUserEmailAddress();
+    const addonName = config.addonName;
+    
+    // Get last processed message ID for stopping condition
+    const properties = PropertiesService.getUserProperties();
+    const lastProcessedMessageId = properties.getProperty('passiveLastProcessedMessageId');
+    
+    threads.forEach(thread => {
+      const messages = thread.getMessages();
+      const threadEmails = [];
+      let shouldStop = false;
+      
+      messages.forEach(message => {
+        // Stop if we've reached the last processed message
+        if (lastProcessedMessageId && message.getId() === lastProcessedMessageId) {
+          shouldStop = true;
+          return;
+        }
+        
+        if (message.getDate() >= dateRange.start && message.getDate() <= dateRange.end) {
+          // Get RFC822 message ID for permalink generation
+          let rfc822MessageId = null;
+          try {
+            const rawContent = message.getRawContent();
+            const messageIdMatch = rawContent.match(/Message-ID:\s*<([^>]+)>/i);
+            if (messageIdMatch) {
+              rfc822MessageId = messageIdMatch[1];
+            }
+          } catch (error) {
+            console.warn('Could not get RFC822 message ID for message:', message.getId(), error);
+          }
+          
+          const email = {
+            id: message.getId(),
+            subject: message.getSubject(),
+            sender: message.getFrom(),
+            date: message.getDate(),
+            body: message.getPlainBody(),
+            snippet: message.getPlainBody().substring(0, 200),
+            rfc822MessageId: rfc822MessageId
+          };
+          
+          // Only include emails that should not be ignored
+          if (!shouldIgnoreEmail(email, userEmail, addonName)) {
+            threadEmails.push(email);
+          }
+        }
+      });
+      
+      if (threadEmails.length > 0) {
+        // Sort emails in thread by date (oldest first)
+        threadEmails.sort((a, b) => a.date - b.date);
+        emailThreads.push({
+          threadId: thread.getId(),
+          subject: thread.getFirstMessageSubject(),
+          emails: threadEmails,
+          totalEmails: threadEmails.length,
+          latestDate: threadEmails[threadEmails.length - 1].date
+        });
+      }
+      
+      // Stop processing if we found the last processed message
+      if (shouldStop) {
+        return false; // Break out of forEach
+      }
+    });
+    
+    // Sort threads by latest email date (most recent first)
+    emailThreads.sort((a, b) => b.latestDate - a.latestDate);
+    
+    return emailThreads;
+  } catch (error) {
+    console.error('Error fetching email threads for passive workflow:', error);
+    throw new Error('Failed to fetch email threads for passive workflow');
+  }
+}
+
+/**
  * Main entry point when add-on is opened
  */
 function onHomepageTrigger(e) {
@@ -82,6 +406,41 @@ function onHomepageTrigger(e) {
 function onGmailMessageOpen(e) {
   // Future: Quick scan single email functionality
   return buildQuickScanCard(e);
+}
+
+/**
+ * Setup passive workflow trigger (hourly)
+ */
+function setupPassiveWorkflowTrigger() {
+  try {
+    const properties = PropertiesService.getUserProperties();
+    
+    // Delete existing trigger if it exists
+    const existingTriggerId = properties.getProperty('passiveWorkflowTriggerId');
+    if (existingTriggerId) {
+      try {
+        const trigger = ScriptApp.getProjectTriggers().find(t => t.getUniqueId() === existingTriggerId);
+        if (trigger) {
+          ScriptApp.deleteTrigger(trigger);
+        }
+      } catch (error) {
+        console.warn('Could not delete existing passive workflow trigger:', error);
+      }
+    }
+    
+    // Create new hourly trigger
+    const trigger = ScriptApp.newTrigger('runPassiveWorkflow')
+      .timeBased()
+      .everyHours(1)
+      .create();
+    
+    // Store trigger ID for future reference
+    properties.setProperty('passiveWorkflowTriggerId', trigger.getUniqueId());
+    
+    console.log('Passive workflow trigger created successfully');
+  } catch (error) {
+    console.error('Error setting up passive workflow trigger:', error);
+  }
 }
 
 /**
@@ -116,7 +475,8 @@ function handleConfigSubmit(e) {
       mustKnowOther: getFormBoolean(formInputs.mustKnowOther),
       unreadOnly: getFormBoolean(formInputs.unreadOnly),
       inboxOnly: getFormBoolean(formInputs.inboxOnly),
-      starInterestingEmails: getFormBoolean(formInputs.starInterestingEmails)
+      starInterestingEmails: getFormBoolean(formInputs.starInterestingEmails),
+      automaticScanning: getFormBoolean(formInputs.automaticScanning)
     });
     
     return buildConfigSuccessCard();
@@ -130,9 +490,10 @@ function handleConfigSubmit(e) {
  */
 function handleScanEmails(e) {
   try {
-    // Check if processing is already running
-    if (isProcessingRunning()) {
-      return buildErrorCard('Another email scanning process is already running. Please wait for it to complete or check the status.');
+    // Check if processing is already running using new lock mechanism
+    const lockStatus = checkLock();
+    if (lockStatus.locked) {
+      return buildErrorCard(`Another ${lockStatus.type} workflow is already running. Please wait for it to complete or check the status.`);
     }
     
     const timeRange = e.parameters.timeRange || '1day';
@@ -153,6 +514,9 @@ function handleScanEmails(e) {
  * Start background email processing (always uses chunked approach)
  */
 function startBackgroundEmailProcessing(timeRange) {
+  // Acquire lock for active workflow
+  lock('active');
+  
   // Store processing status
   const properties = PropertiesService.getUserProperties();
   properties.setProperties({
@@ -272,6 +636,8 @@ function processEmailsChunkedStep() {
     // Clear chunk timing on error
     cleanupChunkTiming(properties);
     sendProcessingErrorEmail(error.message);
+    // Release lock on error
+    unlock();
   }
 }
 
@@ -385,6 +751,9 @@ function finalizeChunkedProcessing(accumulated) {
     // Clear chunk timing on error
     cleanupChunkTiming(properties);
     sendProcessingErrorEmail(error.message);
+  } finally {
+    // Always release lock for active workflow
+    unlock();
   }
 }
 
@@ -775,4 +1144,32 @@ function buildLatestRunStatsCard() {
     console.error('Error building latest run stats card:', error);
     return buildMainCard();
   }
+}
+
+function isPassiveWorkflowScheduled() {
+  return ScriptApp.getProjectTriggers()
+    .some(t => t.getHandlerFunction() === 'runPassiveWorkflow');
+}
+
+function enablePassiveWorkflowSchedule() {
+  if (!isPassiveWorkflowScheduled()) {
+    ScriptApp.newTrigger('runPassiveWorkflow').timeBased().everyHours(1).create();
+  }
+}
+
+function disablePassiveWorkflowSchedule() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'runPassiveWorkflow')
+    .forEach(t => ScriptApp.deleteTrigger(t));
+}
+
+// Handlers for UI (called from toggle in both config & scan cards):
+function handleAutomationToggle(e) {
+  const checked = e.formInputs && e.formInputs.automaticScheduleCheckbox && e.formInputs.automaticScheduleCheckbox.includes('true');
+  if (checked) {
+    enablePassiveWorkflowSchedule();
+  } else {
+    disablePassiveWorkflowSchedule();
+  }
+  return buildConfigSuccessCard();
 }
