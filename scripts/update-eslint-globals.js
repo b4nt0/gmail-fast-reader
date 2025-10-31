@@ -25,7 +25,6 @@ const eslintConfigText = fs.readFileSync(eslintrcPath, 'utf8');
 // Find the globals section and replace it
 // Look for the pattern between "globals: {" and the closing brace
 const globalsStartMarker = /(\s+globals:\s+\{)/;
-const globalsEndMarker = /(\s+\},)/;
 
 if (!globalsStartMarker.test(eslintConfigText)) {
   console.error('Could not find globals section in .eslintrc.js');
@@ -38,11 +37,10 @@ const globalsList = globalNames
   .join(',\n');
 
 // Replace the globals section
-const newGlobalsSection = `globals: {\n${globalsList}\n      }`;
-
+// Match the closing brace with its indentation, but capture the newline separately
 const updatedConfig = eslintConfigText.replace(
-  /(\s+globals:\s+\{)[\s\S]*?(\s+\},)/,
-  `$1\n${globalsList}\n      $2`
+  /(\s+globals:\s+\{)[\s\S]*?(\n\s+\},)/,
+  `$1\n${globalsList}$2`
 );
 
 fs.writeFileSync(eslintrcPath, updatedConfig, 'utf8');
