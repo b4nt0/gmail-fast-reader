@@ -105,8 +105,11 @@ function shouldIgnoreEmail(email, userEmail, addonName) {
 
 /**
  * Fetch email threads from Gmail API (prioritizing threads)
+ * @param {Object} dateRange - Object with start and end Date objects
+ * @param {string} [stopAtMessageId] - Optional message ID to stop processing at (for passive workflow)
+ * @returns {Array} Array of email thread objects
  */
-function fetchEmailThreadsFromGmail(dateRange) {
+function fetchEmailThreadsFromGmail(dateRange, stopAtMessageId) {
   try {
     // Get configuration for filtering options
     const config = getConfiguration();
@@ -133,8 +136,15 @@ function fetchEmailThreadsFromGmail(dateRange) {
     threads.forEach(thread => {
       const messages = thread.getMessages();
       const threadEmails = [];
+      let shouldStop = false;
       
       messages.forEach(message => {
+        // Stop if we've reached the stop message ID (for passive workflow)
+        if (stopAtMessageId && message.getId() === stopAtMessageId) {
+          shouldStop = true;
+          return;
+        }
+        
         if (message.getDate() >= dateRange.start && message.getDate() <= dateRange.end) {
           // Get RFC822 message ID for permalink generation
           let rfc822MessageId = null;
@@ -175,6 +185,11 @@ function fetchEmailThreadsFromGmail(dateRange) {
           totalEmails: threadEmails.length,
           latestDate: threadEmails[threadEmails.length - 1].date
         });
+      }
+      
+      // Stop processing if we found the stop message ID
+      if (shouldStop) {
+        return false; // Break out of forEach
       }
     });
     

@@ -367,99 +367,17 @@ function calculatePassiveWorkflowDateRange() {
 
 /**
  * Fetch email threads for passive workflow with message filtering
+ * Uses the shared fetchEmailThreadsFromGmail function with a stop condition
+ * to avoid reprocessing already-processed emails.
  */
 function fetchEmailThreadsForPassiveWorkflow(dateRange) {
   try {
-    // Get configuration for filtering options
-    const config = getConfiguration();
-    
-    // Build base query with date range
-    let query = `after:${Math.floor(dateRange.start.getTime() / 1000)} before:${Math.floor(dateRange.end.getTime() / 1000)}`;
-    
-    // Add filtering criteria based on configuration
-    if (config.unreadOnly) {
-      query += ' is:unread';
-    }
-    
-    if (config.inboxOnly) {
-      query += ' in:inbox';
-    }
-    
-    const threads = GmailApp.search(query, 0, 100);
-    const emailThreads = [];
-    
-    // Get user email and addon name for filtering
-    const userEmail = getUserEmailAddress();
-    const addonName = config.addonName;
-    
     // Get last processed message ID for stopping condition
     const properties = PropertiesService.getUserProperties();
     const lastProcessedMessageId = properties.getProperty('passiveLastProcessedMessageId');
     
-    threads.forEach(thread => {
-      const messages = thread.getMessages();
-      const threadEmails = [];
-      let shouldStop = false;
-      
-      messages.forEach(message => {
-        // Stop if we've reached the last processed message
-        if (lastProcessedMessageId && message.getId() === lastProcessedMessageId) {
-          shouldStop = true;
-          return;
-        }
-        
-        if (message.getDate() >= dateRange.start && message.getDate() <= dateRange.end) {
-          // Get RFC822 message ID for permalink generation
-          let rfc822MessageId = null;
-          try {
-            const rawContent = message.getRawContent();
-            const messageIdMatch = rawContent.match(/Message-ID:\s*<([^>]+)>/i);
-            if (messageIdMatch) {
-              rfc822MessageId = messageIdMatch[1];
-            }
-          } catch (error) {
-            console.warn('Could not get RFC822 message ID for message:', message.getId(), error);
-          }
-          
-          const email = {
-            id: message.getId(),
-            subject: message.getSubject(),
-            sender: message.getFrom(),
-            date: message.getDate(),
-            body: message.getPlainBody(),
-            snippet: message.getPlainBody().substring(0, 200),
-            rfc822MessageId: rfc822MessageId
-          };
-          
-          // Only include emails that should not be ignored
-          if (!shouldIgnoreEmail(email, userEmail, addonName)) {
-            threadEmails.push(email);
-          }
-        }
-      });
-      
-      if (threadEmails.length > 0) {
-        // Sort emails in thread by date (oldest first)
-        threadEmails.sort((a, b) => a.date - b.date);
-        emailThreads.push({
-          threadId: thread.getId(),
-          subject: thread.getFirstMessageSubject(),
-          emails: threadEmails,
-          totalEmails: threadEmails.length,
-          latestDate: threadEmails[threadEmails.length - 1].date
-        });
-      }
-      
-      // Stop processing if we found the last processed message
-      if (shouldStop) {
-        return false; // Break out of forEach
-      }
-    });
-    
-    // Sort threads by latest email date (most recent first)
-    emailThreads.sort((a, b) => b.latestDate - a.latestDate);
-    
-    return emailThreads;
+    // Use shared function with stop condition to avoid reprocessing
+    return fetchEmailThreadsFromGmail(dateRange, lastProcessedMessageId);
   } catch (error) {
     console.error('Error fetching email threads for passive workflow:', error);
     throw new Error('Failed to fetch email threads for passive workflow');
