@@ -1,12 +1,12 @@
 /**
- * Tests for UI.gs - Card building functions
+ * Tests for UI.js - Card building functions
  * 
- * Note: Since .gs files cannot be directly imported into Jest,
+ * Note: Since Apps Script .js files cannot be directly imported into Jest,
  * these tests validate the card building logic structure and
  * verify that the correct CardService methods are called.
  * 
  * For full integration testing, test directly in Apps Script
- * or use a transpiler to convert .gs to .js modules.
+ * or use a transpiler to convert .js to Jest-compatible modules.
  */
 
 describe('buildMainCard - Card Structure Tests', () => {

@@ -11,9 +11,9 @@ const addonDir = path.join(__dirname, '..', 'addon');
 const definedFunctions = new Set();
 const referencedFunctions = [];
 
-// Extract all function names from .gs files
+// Extract all function names from .js files
 const files = fs.readdirSync(addonDir)
-  .filter(file => file.endsWith('.gs'))
+  .filter(file => file.endsWith('.js') && file !== 'appsscript.json')
   .map(file => path.join(addonDir, file));
 
 files.forEach(file => {

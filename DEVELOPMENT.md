@@ -49,7 +49,7 @@
 
 ## Project Structure
 
-- `addon/*.gs` - Google Apps Script source files
+- `addon/*.js` - Google Apps Script source files
 - `addon/appsscript.json` - Apps Script manifest
 - `tests/` - Jest test files
 - `.claspignore` - Files excluded when pushing to Apps Script

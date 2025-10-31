@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Extract function and constant definitions from .gs files
+ * Extract function and constant definitions from .js files
  * to generate ESLint globals configuration
  */
 
@@ -25,9 +25,9 @@ const builtInServices = [
 
 builtInServices.forEach(name => globals.add(name));
 
-// Read all .gs files from addon directory
+// Read all .js files from addon directory
 const files = fs.readdirSync(addonDir)
-  .filter(file => file.endsWith('.gs'))
+  .filter(file => file.endsWith('.js') && file !== 'appsscript.json')
   .map(file => path.join(addonDir, file));
 
 files.forEach(file => {

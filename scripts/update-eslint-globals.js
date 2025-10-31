@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Update .eslintrc.js with automatically extracted globals from .gs files
+ * Update .eslintrc.js with automatically extracted globals from .js files
  */
 
 const fs = require('fs');
@@ -47,6 +47,6 @@ const updatedConfig = eslintConfigText.replace(
 
 fs.writeFileSync(eslintrcPath, updatedConfig, 'utf8');
 
-console.log(`✅ Updated .eslintrc.js with ${globalNames.length} globals from .gs files`);
+console.log(`✅ Updated .eslintrc.js with ${globalNames.length} globals from .js files`);
 console.log(`   Found ${globalNames.length} functions and constants`);
 console.log(`   Run 'npm run lint' to verify`);

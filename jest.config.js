@@ -5,12 +5,12 @@ module.exports = {
     '**/*.test.js'
   ],
   collectCoverageFrom: [
-    '**/*.gs',
+    '**/*.js',
     '!**/node_modules/**',
     '!**/tests/**',
     '!**/__mocks__/**'
   ],
-  moduleFileExtensions: ['js', 'gs'],
+  moduleFileExtensions: ['js'],
   setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
   testTimeout: 10000,
   verbose: true

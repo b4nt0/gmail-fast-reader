@@ -4,8 +4,8 @@
   "description": "Gmail add-on for fast email reading and summarization",
   "main": "index.js",
   "scripts": {
-    "lint": "npm run lint:validate-functions && eslint . --ext .js,.gs",
-    "lint:fix": "eslint . --ext .js,.gs --fix",
+    "lint": "npm run lint:validate-functions && eslint . --ext .js",
+    "lint:fix": "eslint . --ext .js --fix",
     "lint:update-globals": "node scripts/update-eslint-globals.js",
     "lint:validate-functions": "node scripts/validate-function-references.js",
     "test": "jest",
