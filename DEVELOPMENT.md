@@ -35,7 +35,9 @@
 
 ## Available Commands
 
-- `npm run lint` - Check code for linting issues
+- `npm run lint:update-globals` - Extract global function names for the linter
+- `npm run lint:validate-functions` - Validate that function references in `setFunctionName()` calls exist
+- `npm run lint` - Check code for linting issues (includes function reference validation)
 - `npm run lint:fix` - Auto-fix linting issues
 - `npm test` - Run tests
 - `npm run test:watch` - Run tests in watch mode
