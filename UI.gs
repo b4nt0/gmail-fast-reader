@@ -191,13 +191,7 @@ function buildMainCard() {
           .setFieldName('mustKnowLabel')
           .setValue(config.mustKnowLabel || '')
           .setSuggestionsAction(CardService.newAction().setFunctionName('handleLabelSuggestions'))))
-      .addSection(CardService.newCardSection()
-        .setHeader('Automation')
-        .addWidget(CardService.newSelectionInput()
-          .setType(CardService.SelectionInputType.CHECK_BOX)
-          .setTitle('Automatic Scanning (Passive Workflow)')
-          .setFieldName('automaticScheduleCheckbox')
-          .addItem('Enable hourly background scan', 'true', isPassiveWorkflowScheduled())))
+      // Automation is now always on hourly via dispatcher; no toggle in UI
       .addSection(CardService.newCardSection()
         .addWidget(CardService.newButtonSet()
           .addButton(CardService.newTextButton()
@@ -230,7 +224,7 @@ function buildMainCard() {
     });
     
     const isRunning = isProcessingRunning();
-    const scheduled = isPassiveWorkflowScheduled();
+    // Automation scheduling is always on via dispatcher; no UI toggle
     
     const card = CardService.newCardBuilder()
       .setHeader(CardService.newCardHeader()
@@ -246,18 +240,7 @@ function buildMainCard() {
           .setText('⚠️ Another email scanning process is already running. Please wait for it to complete before starting a new scan.')));
     }
     
-    const automationCheckbox = CardService.newSelectionInput()
-      .setType(CardService.SelectionInputType.CHECK_BOX)
-      .setTitle('Automatic Scanning (Passive Workflow)')
-      .setFieldName('automaticScheduleCheckbox')
-      .addItem('Enable hourly background scan', 'true', scheduled);
-    card.addSection(CardService.newCardSection()
-      .setHeader('Automation')
-      .addWidget(automationCheckbox)
-      .addWidget(CardService.newTextButton()
-        .setText('💾 Save Automation Preference')
-        .setOnClickAction(CardService.newAction()
-          .setFunctionName('handleAutomationToggle'))));
+    // No automation section; passive runs hourly automatically
     
     card.addSection(CardService.newCardSection()
       .addWidget(CardService.newButtonSet()
@@ -342,7 +325,11 @@ function buildMainCard() {
         .addButton(CardService.newTextButton()
           .setText('🔄 Refresh Status')
           .setOnClickAction(CardService.newAction()
-            .setFunctionName('checkProcessingStatus')))));
+            .setFunctionName('checkProcessingStatus')))
+        .addButton(CardService.newTextButton()
+          .setText('🧯 Emergency reset')
+          .setOnClickAction(CardService.newAction()
+            .setFunctionName('handleEmergencyReset')))));
     
     return card.build();
   }

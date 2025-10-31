@@ -27,6 +27,117 @@ function unlock() {
 }
 
 /**
+ * Calculate expected start buffer: 30% of trigger delay + 10 seconds
+ */
+function calculateExpectedStartBuffer(triggerDelayMs) {
+  return Math.floor(triggerDelayMs * 0.3) + 600 * 1000;
+}
+
+/**
+ * Centralized processing state helpers
+ */
+function getProcessingState() {
+  const properties = PropertiesService.getUserProperties();
+  return {
+    status: properties.getProperty('processingStatus'),
+    message: properties.getProperty('processingMessage'),
+    startTime: properties.getProperty('processingStartTime'),
+    timeRange: properties.getProperty('processingTimeRange'),
+    chunkStartTime: properties.getProperty('chunkStartTime'),
+    expectedChunkStartTime: properties.getProperty('expectedChunkStartTime')
+  };
+}
+
+function startProcessingState(timeRange, expectedStartAtIso) {
+  const properties = PropertiesService.getUserProperties();
+  properties.setProperties({
+    'processingStatus': PROCESSING_STATUS.RUNNING,
+    'processingStartTime': new Date().toISOString(),
+    'processingTimeRange': timeRange,
+    'processingProgress': '0',
+    'processingMessage': 'Starting email processing...',
+    'processedThreads': '0',
+    'totalThreads': '0',
+    'processedMessages': '0',
+    'totalMessages': '0',
+    'expectedChunkStartTime': expectedStartAtIso || ''
+  });
+}
+
+function markChunkStarting(nowIso) {
+  const properties = PropertiesService.getUserProperties();
+  properties.setProperty('chunkStartTime', nowIso || new Date().toISOString());
+}
+
+function markChunkEnded() {
+  const properties = PropertiesService.getUserProperties();
+  properties.deleteProperty('chunkStartTime');
+}
+
+function setExpectedNextChunkStart(triggerDelayMs) {
+  const properties = PropertiesService.getUserProperties();
+  const expectedBufferMs = calculateExpectedStartBuffer(triggerDelayMs);
+  const expectedAt = new Date(Date.now() + triggerDelayMs + expectedBufferMs).toISOString();
+  properties.setProperty('expectedChunkStartTime', expectedAt);
+}
+
+function releaseProcessingState() {
+  const properties = PropertiesService.getUserProperties();
+  cleanupProcessingState(properties);
+  cleanupChunkState(properties);
+  cleanupChunkTiming(properties);
+  unlock();
+}
+
+function failProcessing(errorMessage) {
+  const properties = PropertiesService.getUserProperties();
+  properties.setProperties({
+    'processingStatus': PROCESSING_STATUS.ERROR,
+    'processingMessage': 'Processing failed: ' + errorMessage
+  });
+  cleanupChunkTiming(properties);
+  unlock();
+}
+
+function checkAndHandleTimeout(now = new Date()) {
+  const properties = PropertiesService.getUserProperties();
+  const state = getProcessingState();
+  if (state.status !== PROCESSING_STATUS.RUNNING) {
+    return false;
+  }
+  // If a chunk started and exceeded timeout
+  if (state.chunkStartTime) {
+    const chunkStart = new Date(state.chunkStartTime);
+    if (now.getTime() - chunkStart.getTime() > PROCESSING_TIMEOUT_MS) {
+      properties.setProperties({
+        'processingStatus': PROCESSING_STATUS.TIMEOUT,
+        'processingMessage': 'Processing timed out after 10 minutes. Please try again with a smaller time range.'
+      });
+      cleanupChunkTiming(properties);
+      try { sendProcessingTimeoutEmail(); } catch (e) { console.error('Failed to send timeout email:', e); }
+      unlock();
+      return true;
+    }
+  } else {
+    // No chunk started yet; if expected start time elapsed, timeout
+    const expIso = state.expectedChunkStartTime;
+    if (expIso) {
+      const expected = new Date(expIso);
+      if (now.getTime() > expected.getTime()) {
+        properties.setProperties({
+          'processingStatus': PROCESSING_STATUS.TIMEOUT,
+          'processingMessage': 'Processing did not start in expected time window and was timed out.'
+        });
+        try { sendProcessingTimeoutEmail(); } catch (e2) { console.error('Failed to send timeout email:', e2); }
+        unlock();
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * Check if a lock exists and is still valid
  * Returns: { locked: boolean, type: string|null, expired: boolean }
  */
@@ -42,14 +153,8 @@ function checkLock() {
     const lockData = JSON.parse(lockStr);
     const lockTime = new Date(lockData.timestamp);
     const currentTime = new Date();
-    const timeDiff = currentTime.getTime() - lockTime.getTime();
-    
-    // Check if lock has expired (10 minutes timeout)
-    if (timeDiff > PROCESSING_TIMEOUT_MS) {
-      // Auto-release expired lock
-      unlock();
-      return { locked: false, type: null, expired: true };
-    }
+    // Delegate timeout handling to centralized checker
+    checkAndHandleTimeout(currentTime);
     
     return { 
       locked: true, 
@@ -68,46 +173,11 @@ function checkLock() {
  * Check if processing is currently running (updated to use new lock mechanism)
  */
 function isProcessingRunning() {
-  const lockStatus = checkLock();
-  
-  if (!lockStatus.locked) {
-    return false;
-  }
-  
-  // For backward compatibility, also check the old processingStatus
   const properties = PropertiesService.getUserProperties();
   const status = properties.getProperty('processingStatus');
-  
-  if (status !== PROCESSING_STATUS.RUNNING) {
-    return false;
-  }
-  
-  // Check for chunk timeout (not overall processing timeout)
-  const chunkStartTimeStr = properties.getProperty('chunkStartTime');
-  if (chunkStartTimeStr) {
-    const chunkStartTime = new Date(chunkStartTimeStr);
-    const currentTime = new Date();
-    const timeDiff = currentTime.getTime() - chunkStartTime.getTime();
-    
-    if (timeDiff > PROCESSING_TIMEOUT_MS) {
-      // Current chunk has timed out
-      properties.setProperties({
-        'processingStatus': PROCESSING_STATUS.TIMEOUT,
-        'processingMessage': 'Processing timed out after 10 minutes. Please try again with a smaller time range.'
-      });
-      
-      // Send timeout notification email
-      try {
-        sendProcessingTimeoutEmail();
-      } catch (emailError) {
-        console.error('Failed to send timeout email:', emailError);
-      }
-      
-      return false;
-    }
-  }
-  
-  return true;
+  if (status !== PROCESSING_STATUS.RUNNING) return false;
+  const timedOut = checkAndHandleTimeout(new Date());
+  return !timedOut && properties.getProperty('processingStatus') === PROCESSING_STATUS.RUNNING;
 }
 
 /**
@@ -174,6 +244,8 @@ function runPassiveWorkflow() {
     }
     
     console.log(`Passive workflow processing emails from ${dateRange.start.toISOString()} to ${dateRange.end.toISOString()}`);
+    // Mark passive chunk start
+    markChunkStarting(new Date().toISOString());
     
     // Fetch and filter emails for passive workflow
     const emailThreads = fetchEmailThreadsForPassiveWorkflow(dateRange);
@@ -249,6 +321,7 @@ function runPassiveWorkflow() {
     }
   } finally {
     // Always release lock
+    markChunkEnded();
     unlock();
   }
 }
@@ -397,6 +470,8 @@ function fetchEmailThreadsForPassiveWorkflow(dateRange) {
  * Main entry point when add-on is opened
  */
 function onHomepageTrigger(e) {
+  // Make sure the hourly dispatcher trigger exists whenever user visits home
+  try { ensureDispatcherScheduled(); } catch (err) { console.error('Failed to ensure dispatcher:', err); }
   return buildMainCard();
 }
 
@@ -409,37 +484,66 @@ function onGmailMessageOpen(e) {
 }
 
 /**
- * Setup passive workflow trigger (hourly)
+ * Ensure a single dispatcher trigger exists (runs every minute)
  */
-function setupPassiveWorkflowTrigger() {
+function ensureDispatcherScheduled() {
+  var hasDispatcher = ScriptApp.getProjectTriggers()
+    .some(function(t) { return t.getHandlerFunction() === 'runDispatcher'; });
+  if (!hasDispatcher) {
+    // Gmail add-ons require at least hourly cadence for time-based triggers
+    ScriptApp.newTrigger('runDispatcher').timeBased().everyHours(1).create();
+  }
+}
+
+/**
+ * Delete all hourly dispatcher triggers (used to temporarily free the slot)
+ */
+function deleteDispatcherTriggers() {
+  ScriptApp.getProjectTriggers()
+    .filter(function(t) { return t.getHandlerFunction() === 'runDispatcher'; })
+    .forEach(function(t) { ScriptApp.deleteTrigger(t); });
+}
+
+  /**
+   * Dispatcher: advances active processing if present; otherwise runs passive hourly
+   */
+function runDispatcher() {
+  var properties = PropertiesService.getUserProperties();
   try {
-    const properties = PropertiesService.getUserProperties();
-    
-    // Delete existing trigger if it exists
-    const existingTriggerId = properties.getProperty('passiveWorkflowTriggerId');
-    if (existingTriggerId) {
-      try {
-        const trigger = ScriptApp.getProjectTriggers().find(t => t.getUniqueId() === existingTriggerId);
-        if (trigger) {
-          ScriptApp.deleteTrigger(trigger);
-        }
-      } catch (error) {
-        console.warn('Could not delete existing passive workflow trigger:', error);
+    // Enforce centralized timeout at entry
+    if (checkAndHandleTimeout(new Date())) {
+      ensureDispatcherScheduled();
+      return;
+    }
+    // If active processing is running or prepared, advance chunk
+    var status = properties.getProperty('processingStatus');
+    var lockStatus = checkLock();
+    if (status === PROCESSING_STATUS.RUNNING) {
+      // Acquire lock if missing
+      if (!lockStatus.locked) {
+        lock('active');
+      }
+      processEmailsChunkedStep();
+      return;
+    }
+
+    // Otherwise run passive workflow hourly (hard-coded)
+    var config = getConfiguration();
+    if (config && config.openaiApiKey) {
+      var lastRunIso = properties.getProperty('passiveLastRunIso');
+      var now = new Date();
+      var shouldRun = true;
+      if (lastRunIso) {
+        var lastRun = new Date(lastRunIso);
+        shouldRun = (now.getTime() - lastRun.getTime()) >= (60 * 60 * 1000); // 1 hour
+      }
+      if (shouldRun) {
+        properties.setProperty('passiveLastRunIso', now.toISOString());
+        runPassiveWorkflow();
       }
     }
-    
-    // Create new hourly trigger
-    const trigger = ScriptApp.newTrigger('runPassiveWorkflow')
-      .timeBased()
-      .everyHours(1)
-      .create();
-    
-    // Store trigger ID for future reference
-    properties.setProperty('passiveWorkflowTriggerId', trigger.getUniqueId());
-    
-    console.log('Passive workflow trigger created successfully');
   } catch (error) {
-    console.error('Error setting up passive workflow trigger:', error);
+    console.error('Dispatcher error:', error);
   }
 }
 
@@ -517,10 +621,9 @@ function handleLabelSuggestions(e) {
  */
 function handleScanEmails(e) {
   try {
-    // Check if processing is already running using new lock mechanism
-    const lockStatus = checkLock();
-    if (lockStatus.locked) {
-      return buildErrorCard(`Another ${lockStatus.type} workflow is already running. Please wait for it to complete or check the status.`);
+    // Check if already running
+    if (isProcessingRunning()) {
+      return buildErrorCard('Another workflow is already running. Please wait or check status.');
     }
     
     const timeRange = e.parameters.timeRange || '1day';
@@ -543,45 +646,53 @@ function handleScanEmails(e) {
 function startBackgroundEmailProcessing(timeRange) {
   // Acquire lock for active workflow
   lock('active');
+
+  try {
   
-  // Store processing status
-  const properties = PropertiesService.getUserProperties();
-  properties.setProperties({
-    'processingStatus': PROCESSING_STATUS.RUNNING,
-    'processingStartTime': new Date().toISOString(),
-    'processingTimeRange': timeRange,
-    'processingProgress': '0',
-    'processingMessage': 'Starting email processing...',
-    'processedThreads': '0',
-    'totalThreads': '0',
-    'processedMessages': '0',
-    'totalMessages': '0'
-  });
+     // Store processing status
+     const properties = PropertiesService.getUserProperties();
+     // Schedule parameters: one-off trigger delay and expected start buffer
+     const triggerDelayMs = 60 * 1000; // 1 minute kickoff
+     const expectedBufferMs = calculateExpectedStartBuffer(triggerDelayMs);
+     const expectedAt = new Date(Date.now() + expectedBufferMs).toISOString();
+     startProcessingState(timeRange, expectedAt);
 
-  // Initialize chunked processing with 1-day chunks
-  const dateRange = calculateDateRange(timeRange);
-  const start = new Date(dateRange.start);
-  const end = new Date(dateRange.end);
+    // Initialize chunked processing with 1-day chunks
+    const dateRange = calculateDateRange(timeRange);
+    const start = new Date(dateRange.start);
+    const end = new Date(dateRange.end);
 
-  // Compute 1-day chunks count
-  const oneDayMs = 24 * 60 * 60 * 1000;
-  const totalChunks = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / oneDayMs));
+    // Compute 1-day chunks count
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const totalChunks = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / oneDayMs));
 
-  properties.setProperties({
-    'chunkCurrentStart': start.toISOString(),
-    'chunkEnd': end.toISOString(),
-    'chunkIndex': '0',
-    'chunkTotalChunks': String(totalChunks),
-    'accumulatedResults': JSON.stringify({ mustDo: [], mustKnow: [], totalProcessed: 0, batchesProcessed: 0 })
-  });
+    properties.setProperties({
+      'chunkCurrentStart': start.toISOString(),
+      'chunkEnd': end.toISOString(),
+      'chunkIndex': '0',
+      'chunkTotalChunks': String(totalChunks),
+      'accumulatedResults': JSON.stringify({ mustDo: [], mustKnow: [], totalProcessed: 0, batchesProcessed: 0 })
+    });
 
-  properties.setProperty('processingMessage', `Processing emails in ${totalChunks} 1-day chunks...`);
-
-  // Kick off first chunk
-  ScriptApp.newTrigger('processEmailsChunkedStep')
-    .timeBased()
-    .after(1000)
-    .create();
+    properties.setProperty('processingMessage', `Processing emails in ${totalChunks} 1-day chunks...`);
+    // Temporarily remove hourly dispatcher and schedule a one-off active step in 1 minute
+    try {
+      deleteDispatcherTriggers();
+      ScriptApp.newTrigger('processEmailsChunkedStep')
+        .timeBased()
+        .after(triggerDelayMs)
+        .create();
+    } catch (error) {
+      console.error('Failed to schedule one-off active trigger:', error);
+      failProcessing(error.message);
+      try { sendProcessingErrorEmail(error.message); } catch (e2) { console.error('Failed to send error email:', e2); }
+      // Always release lock on failure and restore dispatcher
+      try { ensureDispatcherScheduled(); } catch (e3) { console.error('Failed to restore dispatcher:', e3); }
+    }
+  } catch (error) {
+    console.error('Failed to start background email processing:', error);
+    unlock();
+  }
 }
 
 /**
@@ -590,6 +701,10 @@ function startBackgroundEmailProcessing(timeRange) {
 function processEmailsChunkedStep() {
   const properties = PropertiesService.getUserProperties();
   try {
+    // As soon as the one-off fires, restore the hourly dispatcher
+    try { ensureDispatcherScheduled(); } catch (e0) { console.error('Failed to ensure dispatcher at step start:', e0); }
+    // Mark chunk starting before heavy work
+    markChunkStarting(new Date().toISOString());
     const config = getConfiguration();
     if (!config.openaiApiKey) {
       throw new Error('OpenAI API key not configured');
@@ -623,8 +738,7 @@ function processEmailsChunkedStep() {
 
     properties.setProperty('processingMessage', `Processing day ${chunkIndex + 1} of ${totalChunks} (${currentStart.toDateString()})...`);
 
-    // Set chunk start time for timeout detection
-    properties.setProperty('chunkStartTime', new Date().toISOString());
+    // chunkStartTime already set at the beginning via markChunkStarting
 
     // Process the day in smaller sub-chunks (6 hours) to stay within time limits
     const subChunkResults = processDayInSubChunks(currentStart, currentStop, config, properties);
@@ -648,11 +762,11 @@ function processEmailsChunkedStep() {
       return;
     }
 
-    // Chain next trigger for the following day chunk (1 hour delay for Google Apps Script limitation)
-    ScriptApp.newTrigger('processEmailsChunkedStep')
-      .timeBased()
-      .after(60 * 60 * 1000) // 1 hour delay
-      .create();
+    // Mark this chunk as ended and set expected start for next chunk (dispatcher runs hourly)
+    markChunkEnded();
+    const dispatcherIntervalMs = 60 * 60 * 1000; // 1 hour
+    setExpectedNextChunkStart(dispatcherIntervalMs);
+    ensureDispatcherScheduled();
 
   } catch (error) {
     console.error('Error in chunked background processing:', error);
@@ -665,6 +779,8 @@ function processEmailsChunkedStep() {
     sendProcessingErrorEmail(error.message);
     // Release lock on error
     unlock();
+    // Ensure dispatcher remains scheduled
+    ensureDispatcherScheduled();
   }
 }
 
@@ -781,6 +897,8 @@ function finalizeChunkedProcessing(accumulated) {
   } finally {
     // Always release lock for active workflow
     unlock();
+    // Ensure dispatcher remains scheduled
+    ensureDispatcherScheduled();
   }
 }
 
@@ -843,7 +961,7 @@ function sendProcessingErrorEmail(errorMessage) {
 function sendProcessingTimeoutEmail() {
   const config = getConfiguration();
   const subject = `${config.addonName} - Processing Timeout - ${new Date().toLocaleDateString()}`;
-  const body = `Email processing timed out after 10 minutes.\n\nThis usually happens when processing a large number of emails. Please try:\n\n1. Using a shorter time range (e.g., 6 hours instead of 7 days)\n2. Reducing the number of topics to focus on\n3. Checking your internet connection\n\nYou can check the status in the Gmail Fast Reader add-on.`;
+  const body = `Email processing timed out.\n\nThis usually happens when processing a large number of emails. Please try:\n\n1. Using a shorter time range (e.g., 6 hours instead of 7 days)\n2. Reducing the number of topics to focus on\n3. Checking your internet connection\n\nYou can check the status in the Gmail Fast Reader add-on.`;
   
   GmailApp.sendEmail(
     getUserEmailAddress(),
@@ -853,6 +971,37 @@ function sendProcessingTimeoutEmail() {
       name: config.addonName
     }
   );
+}
+
+/**
+ * Emergency reset: clear state, delete triggers, restore hourly dispatcher
+ */
+function resetAddonState() {
+  try {
+    // Delete all triggers for this project
+    ScriptApp.getProjectTriggers().forEach(function(t) { ScriptApp.deleteTrigger(t); });
+  } catch (e) {
+    console.error('Failed deleting triggers:', e);
+  }
+  try {
+    releaseProcessingState();
+  } catch (e2) {
+    console.error('Failed releasing processing state:', e2);
+  }
+  try {
+    ensureDispatcherScheduled();
+  } catch (e3) {
+    console.error('Failed ensuring dispatcher after reset:', e3);
+  }
+}
+
+function handleEmergencyReset() {
+  try {
+    resetAddonState();
+    return buildConfigSuccessCard();
+  } catch (e) {
+    return buildErrorCard('Emergency reset failed: ' + e.message);
+  }
 }
 
 /**
@@ -882,6 +1031,13 @@ function checkProcessingStatus() {
   }
   
   if (status === PROCESSING_STATUS.RUNNING) {
+    // Single timeout check
+    if (checkAndHandleTimeout(new Date())) {
+      saveLatestRunStats(properties, PROCESSING_STATUS.TIMEOUT, 'Processing timed out.');
+      cleanupProcessingState(properties);
+      cleanupChunkTiming(properties);
+      return buildLatestRunStatsCard();
+    }
     const startTimeStr = properties.getProperty('processingStartTime');
     const message = properties.getProperty('processingMessage') || 'Processing...';
     const progress = properties.getProperty('processingProgress') || '0';
@@ -889,36 +1045,22 @@ function checkProcessingStatus() {
     const totalThreads = parseInt(properties.getProperty('totalThreads') || '0');
     const processedMessages = parseInt(properties.getProperty('processedMessages') || '0');
     const totalMessages = parseInt(properties.getProperty('totalMessages') || '0');
-    
-    // Check for chunk timeout (not overall processing timeout)
     const chunkStartTimeStr = properties.getProperty('chunkStartTime');
-    if (chunkStartTimeStr) {
-      const chunkStartTime = new Date(chunkStartTimeStr);
-      const currentTime = new Date();
-      const timeDiff = currentTime.getTime() - chunkStartTime.getTime();
-      
-      if (timeDiff > PROCESSING_TIMEOUT_MS) {
-        // Current chunk has timed out - save latest stats before clearing
-        saveLatestRunStats(properties, PROCESSING_STATUS.TIMEOUT, 'Processing timed out after 10 minutes. Please try again with a smaller time range.');
-        
-        // Clear processing status and chunk timing
-        cleanupProcessingState(properties);
-        cleanupChunkTiming(properties);
-        
-        // Send timeout notification email
-        try {
-          sendProcessingTimeoutEmail();
-        } catch (emailError) {
-          console.error('Failed to send timeout email:', emailError);
-        }
-        
-        // Show latest run statistics
-        return buildLatestRunStatsCard();
-      }
-    }
+    const expectedStartStr = properties.getProperty('expectedChunkStartTime');
     
     // Build detailed progress message
     let progressMessage = message;
+    // If no chunk is currently running but we have an upcoming expected start, show a waiting line
+    if (!chunkStartTimeStr && expectedStartStr) {
+      const now = new Date();
+      const expectedAt = new Date(expectedStartStr);
+      if (expectedAt.getTime() > now.getTime()) {
+        const remainingMs = expectedAt.getTime() - now.getTime();
+        const remainingMin = Math.floor(remainingMs / 60000);
+        const remainingSec = Math.floor((remainingMs % 60000) / 1000);
+        progressMessage = `⏳ Waiting for next scheduled trigger: ~${expectedAt.toLocaleString()} (in ${remainingMin}m ${remainingSec}s)`;
+      }
+    }
     
     // Add progress information if available
     if (totalThreads > 0 || totalMessages > 0) {
@@ -1154,13 +1296,20 @@ function buildLatestRunStatsCard() {
           .setText(statsText)))
       .addSection(CardService.newCardSection()
         .addWidget(CardService.newTextButton()
+          .setText('🧯 Emergency reset')
+          .setOnClickAction(CardService.newAction()
+            .setFunctionName('handleEmergencyReset'))))
+      .addSection(CardService.newCardSection()
+        .addWidget(CardService.newTextButton()
           .setText('🔄 Start New Scan')
           .setOnClickAction(CardService.newAction()
-            .setFunctionName('buildActiveWorkflowCard')))
+            .setFunctionName('buildActiveWorkflowCard'))))
+      .addSection(CardService.newCardSection()
         .addWidget(CardService.newTextButton()
           .setText('⚙️ Configuration')
           .setOnClickAction(CardService.newAction()
-            .setFunctionName('buildConfigCard')))
+            .setFunctionName('buildConfigurationCard'))))
+      .addSection(CardService.newCardSection()
         .addWidget(CardService.newTextButton()
           .setText('🏠 Main Menu')
           .setOnClickAction(CardService.newAction()
@@ -1173,30 +1322,5 @@ function buildLatestRunStatsCard() {
   }
 }
 
-function isPassiveWorkflowScheduled() {
-  return ScriptApp.getProjectTriggers()
-    .some(t => t.getHandlerFunction() === 'runPassiveWorkflow');
-}
-
-function enablePassiveWorkflowSchedule() {
-  if (!isPassiveWorkflowScheduled()) {
-    ScriptApp.newTrigger('runPassiveWorkflow').timeBased().everyHours(1).create();
-  }
-}
-
-function disablePassiveWorkflowSchedule() {
-  ScriptApp.getProjectTriggers()
-    .filter(t => t.getHandlerFunction() === 'runPassiveWorkflow')
-    .forEach(t => ScriptApp.deleteTrigger(t));
-}
-
 // Handlers for UI (called from toggle in both config & scan cards):
-function handleAutomationToggle(e) {
-  const checked = e.formInputs && e.formInputs.automaticScheduleCheckbox && e.formInputs.automaticScheduleCheckbox.includes('true');
-  if (checked) {
-    enablePassiveWorkflowSchedule();
-  } else {
-    disablePassiveWorkflowSchedule();
-  }
-  return buildConfigSuccessCard();
-}
+// Removed automation toggle; passive is hard-coded hourly via dispatcher
