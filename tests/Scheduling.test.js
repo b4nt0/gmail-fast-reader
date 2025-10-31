@@ -101,7 +101,6 @@ function startBackgroundEmailProcessing(timeRange) {
     scriptContext.ScriptApp = global.ScriptApp;
     return originalEnsureDispatcher();
   };
-  scriptContext.failProcessing = scriptContext.failProcessing;
   scriptContext.sendProcessingErrorEmail = global.sendProcessingErrorEmail;
   return scriptContext.startBackgroundEmailProcessing(timeRange);
 }
@@ -209,7 +208,6 @@ function runDispatcher() {
     scriptContext.sendProcessingErrorEmail = global.sendProcessingErrorEmail;
     return originalProcessStep();
   };
-  scriptContext.runPassiveWorkflow = scriptContext.runPassiveWorkflow;
   scriptContext.lock = function(workflowType) {
     return lock(workflowType);
   };
