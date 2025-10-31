@@ -8,6 +8,9 @@ const PROCESSING_TIMEOUT_MS = 10 * 60 * 1000;
 // Auto-refresh interval for status checking (5 seconds in milliseconds)
 const STATUS_REFRESH_INTERVAL_MS = 5 * 1000;
 
+// Chunk size for email processing (2 days in milliseconds)
+const CHUNK_SIZE_MS = 2 * 24 * 60 * 60 * 1000;
+
 // Processing status constants
 const PROCESSING_STATUS = {
   RUNNING: 'running',

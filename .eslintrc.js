@@ -22,6 +22,7 @@ module.exports = {
     'no-inner-declarations': 'off'
   },
   globals: {
+        'CHUNK_SIZE_MS': 'readonly',
         'CardService': 'readonly',
         'GmailApp': 'readonly',
         'Logger': 'readonly',
@@ -91,7 +92,6 @@ module.exports = {
         'onGmailMessageOpen': 'readonly',
         'onHomepageTrigger': 'readonly',
         'parseOpenAIResponse': 'readonly',
-        'processDayInSubChunks': 'readonly',
         'processEmails': 'readonly',
         'processEmailsChunkedStep': 'readonly',
         'processEmailsInBatches': 'readonly',
@@ -113,6 +113,7 @@ module.exports = {
         'startProcessingState': 'readonly',
         'unlock': 'readonly',
         'updateProcessingProgress': 'readonly'
+      
       
   },
   overrides: [

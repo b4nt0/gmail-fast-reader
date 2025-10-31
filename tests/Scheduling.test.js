@@ -51,11 +51,22 @@ scriptContext.PROCESSING_TIMEOUT_MS = 10 * 60 * 1000;
 // Load Constants.js first (even though we define it above, load it for consistency)
 const constantsJsPath = path.join(__dirname, '../addon/Constants.js');
 const constantsCode = fs.readFileSync(constantsJsPath, 'utf8');
+// Add scriptContext reference to itself so we can copy values from const declarations
+scriptContext.scriptContext = scriptContext;
 vm.runInContext(constantsCode, scriptContext);
 
 // Ensure PROCESSING_STATUS is set (in case Constants.js doesn't export it properly)
 if (!scriptContext.PROCESSING_STATUS) {
   scriptContext.PROCESSING_STATUS = PROCESSING_STATUS;
+}
+
+// Extract CHUNK_SIZE_MS from Constants.js for use in tests
+// Since const declarations in vm context don't automatically attach to the context object,
+// we need to explicitly copy it after Constants.js is loaded
+vm.runInContext('if (typeof CHUNK_SIZE_MS !== "undefined") { scriptContext.CHUNK_SIZE_MS = CHUNK_SIZE_MS; }', scriptContext);
+const CHUNK_SIZE_MS = scriptContext.CHUNK_SIZE_MS;
+if (!CHUNK_SIZE_MS) {
+  throw new Error('Failed to extract CHUNK_SIZE_MS from Constants.js. Make sure Constants.js defines CHUNK_SIZE_MS.');
 }
 
 // Load Code.js to make all functions available
@@ -650,11 +661,13 @@ describe('Scheduling Regression Tests', () => {
   describe('Next chunk required - passive trigger reinstated and next chunk proceeds', () => {
     test('should reinstate dispatcher and prepare for next chunk', () => {
       // Arrange: First chunk completed, more chunks remain
+      // Need at least 2 chunks worth of range (CHUNK_SIZE_MS * 2) to have 2 chunks
       const lockData = { type: 'active', timestamp: new Date().toISOString() };
       mockPropertiesStore['processingLock'] = JSON.stringify(lockData);
       mockPropertiesStore['processingStatus'] = PROCESSING_STATUS.RUNNING;
-      mockPropertiesStore['chunkCurrentStart'] = new Date(Date.now() - 86400000).toISOString();
-      mockPropertiesStore['chunkEnd'] = new Date(Date.now() + 86400000).toISOString();
+      const totalRangeMs = CHUNK_SIZE_MS * 2; // Total range for 2 chunks
+      mockPropertiesStore['chunkCurrentStart'] = new Date(Date.now() - totalRangeMs / 2).toISOString();
+      mockPropertiesStore['chunkEnd'] = new Date(Date.now() + totalRangeMs / 2).toISOString();
       mockPropertiesStore['chunkIndex'] = '0';
       mockPropertiesStore['chunkTotalChunks'] = '2'; // 2 chunks total
       mockPropertiesStore['chunkStartTime'] = new Date(Date.now() - 60000).toISOString(); // Started 1 min ago
@@ -711,11 +724,13 @@ describe('Scheduling Regression Tests', () => {
 
     test('should continue to next chunk when dispatcher runs', () => {
       // Arrange: First chunk completed, second chunk ready
+      // Need at least 3 chunks worth of range (CHUNK_SIZE_MS * 3) to have 3 chunks
       const lockData = { type: 'active', timestamp: new Date().toISOString() };
       mockPropertiesStore['processingLock'] = JSON.stringify(lockData);
       mockPropertiesStore['processingStatus'] = PROCESSING_STATUS.RUNNING;
-      const chunkStart = new Date(Date.now() - 86400000);
-      const chunkEnd = new Date(Date.now() + 86400000);
+      const totalRangeMs = CHUNK_SIZE_MS * 3; // Total range for 3 chunks
+      const chunkStart = new Date(Date.now() - totalRangeMs / 2);
+      const chunkEnd = new Date(Date.now() + totalRangeMs / 2);
       mockPropertiesStore['chunkCurrentStart'] = chunkStart.toISOString();
       mockPropertiesStore['chunkEnd'] = chunkEnd.toISOString();
       mockPropertiesStore['chunkIndex'] = '1'; // Second chunk (0-based, so 1 means second)
