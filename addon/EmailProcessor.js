@@ -519,7 +519,7 @@ MANDATE: You MUST respond with valid JSON in exactly this structure:
       "rfc822MessageId": "rfc822_message_id",
       "subject": "email subject",
       "sender": "sender email",
-      "keyAction": "what the user must do",
+      "keyAction": "what the user must do, and key facts and figures (numbers, locations, prices, etc.)",
       "date": "YYYY-MM-DD or null if no date found",
       "topic": "which topic it matches"
     }
@@ -530,7 +530,7 @@ MANDATE: You MUST respond with valid JSON in exactly this structure:
       "rfc822MessageId": "rfc822_message_id", 
       "subject": "email subject",
       "sender": "sender email",
-      "keyKnowledge": "what the user must know",
+      "keyKnowledge": "what the user must know, and key facts and figures (numbers, locations, prices, etc.)",
       "date": "YYYY-MM-DD or null if no date found",
       "topic": "which topic it matches"
     }
