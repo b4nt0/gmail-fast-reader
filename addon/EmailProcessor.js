@@ -126,6 +126,19 @@ function fetchEmailThreadsFromGmail(dateRange, stopAtMessageId) {
       query += ' in:inbox';
     }
     
+    // Log the email filtering string
+    console.log('=== EMAIL FILTERING ===');
+    console.log('Filter Query:', query);
+    console.log('Date Range:', {
+      start: dateRange.start.toISOString(),
+      end: dateRange.end.toISOString()
+    });
+    console.log('Stop At Message ID:', stopAtMessageId || 'None');
+    console.log('Filter Options:', {
+      unreadOnly: config.unreadOnly,
+      inboxOnly: config.inboxOnly
+    });
+    
     const threads = GmailApp.search(query, 0, 100); // Get more threads initially
     const emailThreads = [];
     
@@ -196,6 +209,26 @@ function fetchEmailThreadsFromGmail(dateRange, stopAtMessageId) {
     // Sort threads by latest email date (most recent first)
     emailThreads.sort((a, b) => b.latestDate - a.latestDate);
     
+    // Log selected emails (subjects, dates, total quantity)
+    console.log('=== SELECTED EMAILS ===');
+    console.log('Total Threads Selected:', emailThreads.length);
+    const totalEmails = emailThreads.reduce((sum, thread) => sum + thread.emails.length, 0);
+    console.log('Total Emails Selected:', totalEmails);
+    console.log('Email Details:');
+    emailThreads.forEach((thread, index) => {
+      console.log(`  Thread ${index + 1}/${emailThreads.length}: "${thread.subject}"`);
+      console.log(`    Thread ID: ${thread.threadId}`);
+      console.log(`    Emails in thread: ${thread.emails.length}`);
+      thread.emails.forEach((email, emailIndex) => {
+        console.log(`      Email ${emailIndex + 1}:`);
+        console.log(`        Subject: "${email.subject}"`);
+        console.log(`        Date: ${email.date.toISOString()}`);
+        console.log(`        Sender: ${email.sender}`);
+        console.log(`        Email ID: ${email.id}`);
+      });
+    });
+    console.log('=== END SELECTED EMAILS ===');
+    
     return emailThreads;
   } catch (error) {
     console.error('Error fetching email threads:', error);
@@ -242,6 +275,21 @@ function processEmailsInBatches(emailThreads, config) {
       updateProcessingProgress(processedThreads, totalThreads, processedMessages, totalMessages, 
         `Processing batch ${allResults.batchesProcessed + 1} with ${currentBatch.length} threads...`);
       
+      // Log emails being fed into LLM for this batch
+      console.log(`=== LLM BATCH ${allResults.batchesProcessed + 1} (Regular Batch) ===`);
+      const batchEmailCount = currentBatch.reduce((sum, thread) => sum + thread.emails.length, 0);
+      console.log(`Batch ${allResults.batchesProcessed + 1} - Threads: ${currentBatch.length}, Total Emails: ${batchEmailCount}`);
+      currentBatch.forEach((thread, batchIndex) => {
+        console.log(`  Thread ${batchIndex + 1}/${currentBatch.length}: "${thread.subject}"`);
+        thread.emails.forEach((email, emailIndex) => {
+          console.log(`    Email ${emailIndex + 1}:`);
+          console.log(`      Subject: "${email.subject}"`);
+          console.log(`      Date: ${email.date.toISOString()}`);
+          console.log(`      Sender: ${email.sender}`);
+        });
+      });
+      console.log(`=== END LLM BATCH ${allResults.batchesProcessed + 1} ===`);
+      
       const batchResults = analyzeEmailsWithOpenAI(currentBatch, config);
       mergeResults(allResults, batchResults);
       
@@ -270,6 +318,18 @@ function processEmailsInBatches(emailThreads, config) {
       updateProcessingProgress(processedThreads, totalThreads, processedMessages, totalMessages, 
         `Processing large thread: ${thread.subject}`);
       
+      // Log emails being fed into LLM for this single large thread
+      console.log(`=== LLM BATCH ${allResults.batchesProcessed + 1} (Single Large Thread) ===`);
+      console.log(`Batch ${allResults.batchesProcessed + 1} - Threads: 1, Total Emails: ${thread.emails.length}`);
+      console.log(`  Thread: "${thread.subject}"`);
+      thread.emails.forEach((email, emailIndex) => {
+        console.log(`    Email ${emailIndex + 1}/${thread.emails.length}:`);
+        console.log(`      Subject: "${email.subject}"`);
+        console.log(`      Date: ${email.date.toISOString()}`);
+        console.log(`      Sender: ${email.sender}`);
+      });
+      console.log(`=== END LLM BATCH ${allResults.batchesProcessed + 1} ===`);
+      
       const batchResults = analyzeEmailsWithOpenAI([thread], config);
       mergeResults(allResults, batchResults);
       
@@ -294,6 +354,21 @@ function processEmailsInBatches(emailThreads, config) {
   if (currentBatch.length > 0) {
     updateProcessingProgress(processedThreads, totalThreads, processedMessages, totalMessages, 
       `Processing final batch with ${currentBatch.length} threads...`);
+    
+    // Log emails being fed into LLM for final batch
+    console.log(`=== LLM BATCH ${allResults.batchesProcessed + 1} (Final Batch) ===`);
+    const batchEmailCount = currentBatch.reduce((sum, thread) => sum + thread.emails.length, 0);
+    console.log(`Final Batch - Threads: ${currentBatch.length}, Total Emails: ${batchEmailCount}`);
+    currentBatch.forEach((thread, batchIndex) => {
+      console.log(`  Thread ${batchIndex + 1}/${currentBatch.length}: "${thread.subject}"`);
+      thread.emails.forEach((email, emailIndex) => {
+        console.log(`    Email ${emailIndex + 1}:`);
+        console.log(`      Subject: "${email.subject}"`);
+        console.log(`      Date: ${email.date.toISOString()}`);
+        console.log(`      Sender: ${email.sender}`);
+      });
+    });
+    console.log(`=== END LLM BATCH ${allResults.batchesProcessed + 1} ===`);
     
     const batchResults = analyzeEmailsWithOpenAI(currentBatch, config);
     mergeResults(allResults, batchResults);
@@ -370,6 +445,23 @@ function mergeResults(allResults, batchResults) {
  */
 function analyzeEmailsWithOpenAI(emailThreads, config) {
   try {
+    // Log emails being fed into LLM iteration
+    console.log('=== LLM ITERATION START ===');
+    const totalEmails = emailThreads.reduce((total, thread) => total + thread.emails.length, 0);
+    console.log(`LLM Iteration - Threads: ${emailThreads.length}, Total Emails: ${totalEmails}`);
+    emailThreads.forEach((thread, threadIndex) => {
+      console.log(`  Thread ${threadIndex + 1}/${emailThreads.length}: "${thread.subject}"`);
+      console.log(`    Thread ID: ${thread.threadId}`);
+      thread.emails.forEach((email, emailIndex) => {
+        console.log(`      Email ${emailIndex + 1}/${thread.emails.length}:`);
+        console.log(`        Subject: "${email.subject}"`);
+        console.log(`        Date: ${email.date.toISOString()}`);
+        console.log(`        Sender: ${email.sender}`);
+        console.log(`        Email ID: ${email.id}`);
+      });
+    });
+    console.log('=== LLM ITERATION END (About to call API) ===');
+    
     const prompt = buildAnalysisPrompt(emailThreads, config);
     
     const response = callOpenAIAPI(prompt, config.openaiApiKey);

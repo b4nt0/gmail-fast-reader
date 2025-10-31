@@ -658,7 +658,18 @@ function processEmailsChunkedStep() {
 
     // Fetch and process threads for this chunk
     const dateRange = { start: currentStart, end: currentStop };
+    
+    // Log chunk information before fetching
+    console.log(`=== CHUNK ${chunkIndex + 1}/${totalChunks} START ===`);
+    console.log(`Chunk Date Range: ${currentStart.toISOString()} to ${currentStop.toISOString()}`);
+    
     const emailThreads = fetchEmailThreadsFromGmail(dateRange);
+    
+    // Log chunk selection results
+    console.log(`=== CHUNK ${chunkIndex + 1}/${totalChunks} SELECTION RESULTS ===`);
+    console.log(`Chunk ${chunkIndex + 1} - Threads: ${emailThreads.length}`);
+    const chunkEmailCount = emailThreads.reduce((sum, thread) => sum + thread.emails.length, 0);
+    console.log(`Chunk ${chunkIndex + 1} - Total Emails: ${chunkEmailCount}`);
     
     let chunkResults = { mustDo: [], mustKnow: [], totalProcessed: 0, batchesProcessed: 0 };
     
