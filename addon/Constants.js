@@ -19,6 +19,10 @@ const PROCESSING_STATUS = {
   TIMEOUT: 'timeout'
 };
 
+// Debug user email for enabling debug features
+// This will be substituted with actual email during deployment
+const DEBUG_USER_EMAIL = 'your-email@example.com';
+
 /**
  * Get the current user's email address
  */

@@ -29,4 +29,5 @@ build/
 # Environment
 .env
 .env.local
+.author-email.txt
 

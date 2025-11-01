@@ -634,31 +634,57 @@ function runDispatcher() {
 }
 
 /**
- * Handle configuration form submission
+ * Helper function to safely extract form values
+ */
+function getFormValue(input, defaultValue = '') {
+  if (!input) return defaultValue;
+  if (Array.isArray(input)) return input[0] || defaultValue;
+  return String(input);
+}
+
+/**
+ * Helper function to safely extract boolean values
+ */
+function getFormBoolean(input, defaultValue = false) {
+  if (!input) return defaultValue;
+  if (Array.isArray(input)) return input.includes('true');
+  return String(input) === 'true';
+}
+
+/**
+ * Merge partial configuration with existing configuration
+ * @param {Object} partialConfig - Partial config object with only the fields to update
+ * @returns {Object} Complete merged configuration
+ */
+function mergeConfiguration(partialConfig) {
+  const existing = getConfiguration();
+  return {
+    addonName: partialConfig.addonName !== undefined ? partialConfig.addonName : existing.addonName,
+    openaiApiKey: partialConfig.openaiApiKey !== undefined ? partialConfig.openaiApiKey : existing.openaiApiKey,
+    timeZone: partialConfig.timeZone !== undefined ? partialConfig.timeZone : existing.timeZone,
+    mustDoTopics: partialConfig.mustDoTopics !== undefined ? partialConfig.mustDoTopics : existing.mustDoTopics,
+    mustKnowTopics: partialConfig.mustKnowTopics !== undefined ? partialConfig.mustKnowTopics : existing.mustKnowTopics,
+    mustDoOther: partialConfig.mustDoOther !== undefined ? partialConfig.mustDoOther : existing.mustDoOther,
+    mustKnowOther: partialConfig.mustKnowOther !== undefined ? partialConfig.mustKnowOther : existing.mustKnowOther,
+    unreadOnly: partialConfig.unreadOnly !== undefined ? partialConfig.unreadOnly : existing.unreadOnly,
+    inboxOnly: partialConfig.inboxOnly !== undefined ? partialConfig.inboxOnly : existing.inboxOnly,
+    mustDoLabel: partialConfig.mustDoLabel !== undefined ? partialConfig.mustDoLabel : existing.mustDoLabel,
+    mustKnowLabel: partialConfig.mustKnowLabel !== undefined ? partialConfig.mustKnowLabel : existing.mustKnowLabel
+  };
+}
+
+/**
+ * Handle configuration form submission (legacy - kept for compatibility)
  */
 function handleConfigSubmit(e) {
   try {
     const formInputs = e.formInputs;
     
-    // Helper function to safely extract form values
-    function getFormValue(input, defaultValue = '') {
-      if (!input) return defaultValue;
-      if (Array.isArray(input)) return input[0] || defaultValue;
-      return String(input);
-    }
-    
-    // Helper function to safely extract boolean values
-    function getFormBoolean(input, defaultValue = false) {
-      if (!input) return defaultValue;
-      if (Array.isArray(input)) return input.includes('true');
-      return String(input) === 'true';
-    }
-    
     // Save configuration
     saveConfiguration({
       addonName: getFormValue(formInputs.addonName, 'Gmail Fast Reader'),
       openaiApiKey: getFormValue(formInputs.openaiApiKey),
-      timeZone: getFormValue(formInputs.timeZone, 'America/New_York'),
+      timeZone: getFormValue(formInputs.timeZone, 'Europe/Paris'),
       mustDoTopics: getFormValue(formInputs.mustDoTopics),
       mustKnowTopics: getFormValue(formInputs.mustKnowTopics),
       mustDoOther: getFormBoolean(formInputs.mustDoOther),
@@ -673,6 +699,173 @@ function handleConfigSubmit(e) {
     return buildConfigSuccessCard();
   } catch (error) {
     return buildErrorCard('Failed to save configuration: ' + error.message);
+  }
+}
+
+/**
+ * Handle topics form submission
+ */
+function handleTopicsSubmit(e) {
+  try {
+    const formInputs = e.formInputs || {};
+    const partialConfig = {
+      mustDoTopics: getFormValue(formInputs.mustDoTopics),
+      mustKnowTopics: getFormValue(formInputs.mustKnowTopics),
+      mustDoOther: getFormBoolean(formInputs.mustDoOther),
+      mustKnowOther: getFormBoolean(formInputs.mustKnowOther)
+    };
+    
+    const mergedConfig = mergeConfiguration(partialConfig);
+    saveConfiguration(mergedConfig);
+    
+    return buildConfigSuccessCard();
+  } catch (error) {
+    return buildErrorCard('Failed to save topics: ' + error.message);
+  }
+}
+
+/**
+ * Handle system settings form submission
+ */
+function handleSystemSettingsSubmit(e) {
+  try {
+    const formInputs = e.formInputs || {};
+    const partialConfig = {
+      addonName: getFormValue(formInputs.addonName, 'Gmail Fast Reader'),
+      openaiApiKey: getFormValue(formInputs.openaiApiKey),
+      timeZone: getFormValue(formInputs.timeZone, 'Europe/Paris')
+    };
+    
+    const mergedConfig = mergeConfiguration(partialConfig);
+    saveConfiguration(mergedConfig);
+    
+    return buildConfigSuccessCard();
+  } catch (error) {
+    return buildErrorCard('Failed to save system settings: ' + error.message);
+  }
+}
+
+/**
+ * Handle email settings form submission
+ */
+function handleEmailSettingsSubmit(e) {
+  try {
+    const formInputs = e.formInputs || {};
+    const partialConfig = {
+      unreadOnly: getFormBoolean(formInputs.unreadOnly),
+      inboxOnly: getFormBoolean(formInputs.inboxOnly),
+      mustDoLabel: getFormValue(formInputs.mustDoLabel),
+      mustKnowLabel: getFormValue(formInputs.mustKnowLabel)
+    };
+    
+    const mergedConfig = mergeConfiguration(partialConfig);
+    saveConfiguration(mergedConfig);
+    
+    return buildConfigSuccessCard();
+  } catch (error) {
+    return buildErrorCard('Failed to save email settings: ' + error.message);
+  }
+}
+
+/**
+ * Handle onboarding navigation (Previous button)
+ */
+function handleOnboardingNavigation(e) {
+  try {
+    const step = parseInt(e.parameters.step || '1', 10);
+    return buildOnboardingCard(step);
+  } catch (error) {
+    return buildErrorCard('Failed to navigate: ' + error.message);
+  }
+}
+
+/**
+ * Handle onboarding save and next step
+ */
+function handleOnboardingSaveAndNext(e) {
+  try {
+    const formInputs = e.formInputs || {};
+    const currentStep = parseInt(e.parameters.step || '1', 10);
+    const nextStep = parseInt(e.parameters.nextStep || '2', 10);
+    
+    let partialConfig = {};
+    
+    // Step 1: System Settings
+    if (currentStep === 1) {
+      partialConfig = {
+        addonName: getFormValue(formInputs.addonName, 'Gmail Fast Reader'),
+        openaiApiKey: getFormValue(formInputs.openaiApiKey),
+        timeZone: getFormValue(formInputs.timeZone, 'Europe/Paris')
+      };
+    }
+    // Step 2: Topics
+    else if (currentStep === 2) {
+      partialConfig = {
+        mustDoTopics: getFormValue(formInputs.mustDoTopics),
+        mustKnowTopics: getFormValue(formInputs.mustKnowTopics),
+        mustDoOther: getFormBoolean(formInputs.mustDoOther),
+        mustKnowOther: getFormBoolean(formInputs.mustKnowOther)
+      };
+    }
+    
+    // Merge and save
+    const mergedConfig = mergeConfiguration(partialConfig);
+    saveConfiguration(mergedConfig);
+    
+    // Navigate to next step
+    return buildOnboardingCard(nextStep);
+  } catch (error) {
+    return buildErrorCard('Failed to save and continue: ' + error.message);
+  }
+}
+
+/**
+ * Handle onboarding finish (last step)
+ */
+function handleOnboardingFinish(e) {
+  try {
+    const formInputs = e.formInputs || {};
+    const partialConfig = {
+      unreadOnly: getFormBoolean(formInputs.unreadOnly),
+      inboxOnly: getFormBoolean(formInputs.inboxOnly),
+      mustDoLabel: getFormValue(formInputs.mustDoLabel),
+      mustKnowLabel: getFormValue(formInputs.mustKnowLabel)
+    };
+    
+    // Merge and save
+    const mergedConfig = mergeConfiguration(partialConfig);
+    saveConfiguration(mergedConfig);
+    
+    // Return success card
+    return buildConfigSuccessCard();
+  } catch (error) {
+    return buildErrorCard('Failed to finish setup: ' + error.message);
+  }
+}
+
+/**
+ * Handle nuke settings (debug function)
+ */
+function handleNukeSettings() {
+  try {
+    const properties = PropertiesService.getUserProperties();
+    
+    // Clear all configuration properties
+    properties.deleteProperty('addonName');
+    properties.deleteProperty('openaiApiKey');
+    properties.deleteProperty('timeZone');
+    properties.deleteProperty('mustDoTopics');
+    properties.deleteProperty('mustKnowTopics');
+    properties.deleteProperty('mustDoOther');
+    properties.deleteProperty('mustKnowOther');
+    properties.deleteProperty('unreadOnly');
+    properties.deleteProperty('inboxOnly');
+    properties.deleteProperty('mustDoLabel');
+    properties.deleteProperty('mustKnowLabel');
+    
+    return buildOnboardingCard(1);
+  } catch (error) {
+    return buildErrorCard('Failed to nuke settings: ' + error.message);
   }
 }
 

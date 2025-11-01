@@ -110,9 +110,9 @@ function buildMainCard() {
   }
   
   /**
-   * Build configuration card
+   * Build system settings card
    */
-  function buildConfigurationCard() {
+  function buildSystemSettingsCard() {
     const config = getConfiguration();
     const timezoneOptions = getTimezoneOptions();
     
@@ -127,9 +127,9 @@ function buildMainCard() {
     
     const card = CardService.newCardBuilder()
       .setHeader(CardService.newCardHeader()
-        .setTitle('Configuration'))
+        .setTitle('System Settings'))
       .addSection(CardService.newCardSection()
-        .setHeader('Basic Settings')
+        .setHeader('System Configuration')
         .addWidget(CardService.newTextInput()
           .setFieldName('addonName')
           .setTitle('Add-on Name')
@@ -141,6 +141,220 @@ function buildMainCard() {
           .setValue(config.openaiApiKey)
           .setHint('Your OpenAI API key for email analysis'))
         .addWidget(timezoneSelection))
+      .addSection(CardService.newCardSection()
+        .addWidget(CardService.newButtonSet()
+          .addButton(CardService.newTextButton()
+            .setText('💾 Save System Settings')
+            .setOnClickAction(CardService.newAction()
+              .setFunctionName('handleSystemSettingsSubmit')))
+          .addButton(CardService.newTextButton()
+            .setText('⬅️ Back to Configuration')
+            .setOnClickAction(CardService.newAction()
+              .setFunctionName('buildConfigurationCard')))));
+    
+    return card.build();
+  }
+  
+  /**
+   * Build email settings card
+   */
+  function buildEmailSettingsCard() {
+    const config = getConfiguration();
+    
+    const card = CardService.newCardBuilder()
+      .setHeader(CardService.newCardHeader()
+        .setTitle('Email Settings'))
+      .addSection(CardService.newCardSection()
+        .setHeader('Email Filtering')
+        .addWidget(CardService.newSelectionInput()
+          .setType(CardService.SelectionInputType.CHECK_BOX)
+          .setTitle('Filter Options')
+          .setFieldName('unreadOnly')
+          .addItem('Unread only', 'true', config.unreadOnly))
+        .addWidget(CardService.newSelectionInput()
+          .setType(CardService.SelectionInputType.CHECK_BOX)
+          .setTitle('')
+          .setFieldName('inboxOnly')
+          .addItem('Inbox only', 'true', config.inboxOnly)))
+      .addSection(CardService.newCardSection()
+        .setHeader('Processing Options')
+        .addWidget(CardService.newTextInput()
+          .setTitle('Label for "I must do" emails (optional)')
+          .setFieldName('mustDoLabel')
+          .setValue(config.mustDoLabel || '')
+          .setSuggestionsAction(CardService.newAction().setFunctionName('handleLabelSuggestions')))
+        .addWidget(CardService.newTextInput()
+          .setTitle('Label for "I must know" emails (optional)')
+          .setFieldName('mustKnowLabel')
+          .setValue(config.mustKnowLabel || '')
+          .setSuggestionsAction(CardService.newAction().setFunctionName('handleLabelSuggestions'))))
+      .addSection(CardService.newCardSection()
+        .addWidget(CardService.newButtonSet()
+          .addButton(CardService.newTextButton()
+            .setText('💾 Save Email Settings')
+            .setOnClickAction(CardService.newAction()
+              .setFunctionName('handleEmailSettingsSubmit')))
+          .addButton(CardService.newTextButton()
+            .setText('⬅️ Back to Configuration')
+            .setOnClickAction(CardService.newAction()
+              .setFunctionName('buildConfigurationCard')))));
+    
+    return card.build();
+  }
+  
+  /**
+   * Build onboarding card (wizard-style)
+   * @param {number} step - Current step (1 = System Settings, 2 = Topics, 3 = Email Settings)
+   */
+  function buildOnboardingCard(step = 1) {
+    const config = getConfiguration();
+    const timezoneOptions = getTimezoneOptions();
+    const totalSteps = 3;
+    
+    // Step titles
+    const stepTitles = {
+      1: 'System Settings',
+      2: 'Important Settings',
+      3: 'Email Settings'
+    };
+    
+    const card = CardService.newCardBuilder()
+      .setHeader(CardService.newCardHeader()
+        .setTitle(`Onboarding - Step ${step} of ${totalSteps}: ${stepTitles[step]}`));
+    
+    // Step 1: System Settings
+    if (step === 1) {
+      const timezoneSelection = CardService.newSelectionInput()
+        .setType(CardService.SelectionInputType.DROPDOWN)
+        .setTitle('Timezone')
+        .setFieldName('timeZone');
+      
+      timezoneOptions.forEach(option => {
+        timezoneSelection.addItem(option.label, option.value, option.value === config.timeZone);
+      });
+      
+      card.addSection(CardService.newCardSection()
+        .setHeader('System Configuration')
+        .addWidget(CardService.newTextInput()
+          .setFieldName('addonName')
+          .setTitle('Add-on Name')
+          .setValue(config.addonName)
+          .setHint('A friendly name for your add-on instance'))
+        .addWidget(CardService.newTextInput()
+          .setFieldName('openaiApiKey')
+          .setTitle('OpenAI API Key')
+          .setValue(config.openaiApiKey)
+          .setHint('Your OpenAI API key for email analysis'))
+        .addWidget(timezoneSelection));
+    }
+    
+    // Step 2: Topics
+    if (step === 2) {
+      card.addSection(CardService.newCardSection()
+        .setHeader('I Must Do Topics')
+        .addWidget(CardService.newTextInput()
+          .setFieldName('mustDoTopics')
+          .setTitle('Topics of Interest')
+          .setValue(config.mustDoTopics)
+          .setHint('Enter topics separated by new lines (e.g., payments, deadlines, meetings)')
+          .setMultiline(true))
+        .addWidget(CardService.newSelectionInput()
+          .setType(CardService.SelectionInputType.CHECK_BOX)
+          .setTitle('Additional Options')
+          .setFieldName('mustDoOther')
+          .addItem('Let AI decide on other relevant topics', 'true', config.mustDoOther)));
+      
+      card.addSection(CardService.newCardSection()
+        .setHeader('I Must Know Topics')
+        .addWidget(CardService.newTextInput()
+          .setFieldName('mustKnowTopics')
+          .setTitle('Topics of Interest')
+          .setValue(config.mustKnowTopics)
+          .setHint('Enter topics separated by new lines (e.g., school updates, news, announcements)')
+          .setMultiline(true))
+        .addWidget(CardService.newSelectionInput()
+          .setType(CardService.SelectionInputType.CHECK_BOX)
+          .setTitle('Additional Options')
+          .setFieldName('mustKnowOther')
+          .addItem('Let AI decide on other relevant topics', 'true', config.mustKnowOther)));
+    }
+    
+    // Step 3: Email Settings
+    if (step === 3) {
+      card.addSection(CardService.newCardSection()
+        .setHeader('Email Filtering')
+        .addWidget(CardService.newSelectionInput()
+          .setType(CardService.SelectionInputType.CHECK_BOX)
+          .setTitle('Filter Options')
+          .setFieldName('unreadOnly')
+          .addItem('Unread only', 'true', config.unreadOnly))
+        .addWidget(CardService.newSelectionInput()
+          .setType(CardService.SelectionInputType.CHECK_BOX)
+          .setTitle('')
+          .setFieldName('inboxOnly')
+          .addItem('Inbox only', 'true', config.inboxOnly)));
+      
+      card.addSection(CardService.newCardSection()
+        .setHeader('Processing Options')
+        .addWidget(CardService.newTextInput()
+          .setTitle('Label for "I must do" emails (optional)')
+          .setFieldName('mustDoLabel')
+          .setValue(config.mustDoLabel || '')
+          .setSuggestionsAction(CardService.newAction().setFunctionName('handleLabelSuggestions')))
+        .addWidget(CardService.newTextInput()
+          .setTitle('Label for "I must know" emails (optional)')
+          .setFieldName('mustKnowLabel')
+          .setValue(config.mustKnowLabel || '')
+          .setSuggestionsAction(CardService.newAction().setFunctionName('handleLabelSuggestions'))));
+    }
+    
+    // Navigation buttons
+    const buttonSet = CardService.newButtonSet();
+    
+    // Previous button (not on step 1)
+    if (step > 1) {
+      buttonSet.addButton(CardService.newTextButton()
+        .setText('⬅️ Previous')
+        .setOnClickAction(CardService.newAction()
+          .setFunctionName('handleOnboardingNavigation')
+          .setParameters({ step: String(step - 1) })));
+    }
+    
+    // Save and Next button
+    if (step < totalSteps) {
+      buttonSet.addButton(CardService.newTextButton()
+        .setText('💾 Save & Next ➡️')
+        .setOnClickAction(CardService.newAction()
+          .setFunctionName('handleOnboardingSaveAndNext')
+          .setParameters({ step: String(step), nextStep: String(step + 1) })));
+    } else {
+      // Last step - Finish button
+      buttonSet.addButton(CardService.newTextButton()
+        .setText('✅ Finish Setup')
+        .setOnClickAction(CardService.newAction()
+          .setFunctionName('handleOnboardingFinish')));
+    }
+    
+    card.addSection(CardService.newCardSection()
+      .addWidget(buttonSet));
+    
+    return card.build();
+  }
+  
+  /**
+   * Build configuration card
+   */
+  function buildConfigurationCard() {
+    // Check if onboarding is needed first
+    if (needsOnboarding()) {
+      return buildOnboardingCard(1);
+    }
+    
+    const config = getConfiguration();
+    
+    const card = CardService.newCardBuilder()
+      .setHeader(CardService.newCardHeader()
+        .setTitle('Configuration'))
       .addSection(CardService.newCardSection()
         .setHeader('I Must Do Topics')
         .addWidget(CardService.newTextInput()
@@ -168,36 +382,31 @@ function buildMainCard() {
           .setFieldName('mustKnowOther')
           .addItem('Let AI decide on other relevant topics', 'true', config.mustKnowOther)))
       .addSection(CardService.newCardSection()
-        .setHeader('Email Filtering')
-        .addWidget(CardService.newSelectionInput()
-          .setType(CardService.SelectionInputType.CHECK_BOX)
-          .setTitle('Filter Options')
-          .setFieldName('unreadOnly')
-          .addItem('Unread only', 'true', config.unreadOnly))
-        .addWidget(CardService.newSelectionInput()
-          .setType(CardService.SelectionInputType.CHECK_BOX)
-          .setTitle('')
-          .setFieldName('inboxOnly')
-          .addItem('Inbox only', 'true', config.inboxOnly)))
-      .addSection(CardService.newCardSection()
-        .setHeader('Processing Options')
-        .addWidget(CardService.newTextInput()
-          .setTitle('Label for "I must do" emails (optional)')
-          .setFieldName('mustDoLabel')
-          .setValue(config.mustDoLabel || '')
-          .setSuggestionsAction(CardService.newAction().setFunctionName('handleLabelSuggestions')))
-        .addWidget(CardService.newTextInput()
-          .setTitle('Label for "I must know" emails (optional)')
-          .setFieldName('mustKnowLabel')
-          .setValue(config.mustKnowLabel || '')
-          .setSuggestionsAction(CardService.newAction().setFunctionName('handleLabelSuggestions'))))
-      // Automation is now always on hourly via dispatcher; no toggle in UI
-      .addSection(CardService.newCardSection()
         .addWidget(CardService.newButtonSet()
           .addButton(CardService.newTextButton()
-            .setText('💾 Save Configuration')
+            .setText('💾 Save Topics')
             .setOnClickAction(CardService.newAction()
-              .setFunctionName('handleConfigSubmit')))));
+              .setFunctionName('handleTopicsSubmit')))
+          .addButton(CardService.newTextButton()
+            .setText('📧 Email Settings')
+            .setOnClickAction(CardService.newAction()
+              .setFunctionName('buildEmailSettingsCard')))
+          .addButton(CardService.newTextButton()
+            .setText('⚙️ System Settings')
+            .setOnClickAction(CardService.newAction()
+              .setFunctionName('buildSystemSettingsCard')))));
+    
+    // Add debug button only for debug user
+    const userEmail = getUserEmailAddress();
+    if (userEmail === DEBUG_USER_EMAIL) {
+      card.addSection(CardService.newCardSection()
+        .setHeader('Debug')
+        .addWidget(CardService.newButtonSet()
+          .addButton(CardService.newTextButton()
+            .setText('🗑️ Nuke All Settings')
+            .setOnClickAction(CardService.newAction()
+              .setFunctionName('handleNukeSettings')))));
+    }
     
     return card.build();
   }

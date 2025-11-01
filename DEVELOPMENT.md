@@ -31,7 +31,11 @@
    npx clasp create --title "Gmail Fast Reader" --type standalone --rootDir .
    ```
 
-4. **You're ready!**
+4. **Set up your email address in `.author-email.txt`**
+
+   This is required for the debug functions to work.
+
+5. **You're ready!**
 
 ## Available Commands
 

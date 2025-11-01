@@ -11,9 +11,9 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
-    "push": "clasp push",
+    "push": "node scripts/substitute-email.js real && clasp push && node scripts/substitute-email.js dummy",
     "open": "clasp open",
-    "deploy": "clasp push && clasp deploy",
+    "deploy": "node scripts/substitute-email.js real && clasp push && clasp deploy && node scripts/substitute-email.js dummy",
     "logs": "clasp logs"
   },
   "keywords": [

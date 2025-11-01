@@ -8,18 +8,31 @@
 function getConfiguration() {
   const properties = PropertiesService.getUserProperties();
   
+  // Helper to get property with default, only using default if property doesn't exist
+  function getProp(key, defaultValue) {
+    const value = properties.getProperty(key);
+    return value !== null ? value : defaultValue;
+  }
+  
+  // Helper to get boolean property with default
+  function getBoolProp(key, defaultValue) {
+    const value = properties.getProperty(key);
+    if (value === null) return defaultValue;
+    return value === 'true';
+  }
+  
   return {
-    addonName: properties.getProperty('addonName') || 'Gmail Fast Reader',
-    openaiApiKey: properties.getProperty('openaiApiKey') || '',
-    timeZone: properties.getProperty('timeZone') || 'America/New_York',
-    mustDoTopics: properties.getProperty('mustDoTopics') || '',
-    mustKnowTopics: properties.getProperty('mustKnowTopics') || '',
-    mustDoOther: properties.getProperty('mustDoOther') === 'true',
-    mustKnowOther: properties.getProperty('mustKnowOther') === 'true',
-    unreadOnly: properties.getProperty('unreadOnly') === 'true',
-    inboxOnly: properties.getProperty('inboxOnly') === 'true',
-    mustDoLabel: properties.getProperty('mustDoLabel') || '',
-    mustKnowLabel: properties.getProperty('mustKnowLabel') || ''
+    addonName: getProp('addonName', 'Gmail Fast Reader'),
+    openaiApiKey: getProp('openaiApiKey', ''),
+    timeZone: getProp('timeZone', 'Europe/Paris'), // CET timezone
+    mustDoTopics: getProp('mustDoTopics', 'tax forms to file'),
+    mustKnowTopics: getProp('mustKnowTopics', 'parent-teacher meetings at school\nschool trips'),
+    mustDoOther: getBoolProp('mustDoOther', true),
+    mustKnowOther: getBoolProp('mustKnowOther', false),
+    unreadOnly: getBoolProp('unreadOnly', false),
+    inboxOnly: getBoolProp('inboxOnly', true),
+    mustDoLabel: getProp('mustDoLabel', 'TODO'),
+    mustKnowLabel: getProp('mustKnowLabel', 'FYI')
   };
 }
 
@@ -49,7 +62,7 @@ function saveConfiguration(config) {
   properties.setProperties({
     'addonName': safeString(config.addonName, 'Gmail Fast Reader'),
     'openaiApiKey': safeString(config.openaiApiKey, ''),
-    'timeZone': safeString(config.timeZone, 'America/New_York'),
+    'timeZone': safeString(config.timeZone, 'Europe/Paris'), // CET timezone
     'mustDoTopics': safeString(config.mustDoTopics, ''),
     'mustKnowTopics': safeString(config.mustKnowTopics, ''),
     'mustDoOther': safeBoolean(config.mustDoOther) ? 'true' : 'false',
@@ -69,6 +82,16 @@ function isConfigurationComplete() {
   return config.openaiApiKey && 
          (config.mustDoTopics || config.mustDoOther) && 
          (config.mustKnowTopics || config.mustKnowOther);
+}
+
+/**
+ * Check if onboarding is needed (first-time setup)
+ * Returns true if openaiApiKey is empty, indicating first-time setup
+ */
+function needsOnboarding() {
+  const properties = PropertiesService.getUserProperties();
+  const openaiApiKey = properties.getProperty('openaiApiKey');
+  return !openaiApiKey || openaiApiKey === '';
 }
 
 /**
