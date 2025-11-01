@@ -678,7 +678,9 @@ function mergeConfiguration(partialConfig) {
     unreadOnly: partialConfig.unreadOnly !== undefined ? partialConfig.unreadOnly : existing.unreadOnly,
     inboxOnly: partialConfig.inboxOnly !== undefined ? partialConfig.inboxOnly : existing.inboxOnly,
     mustDoLabel: partialConfig.mustDoLabel !== undefined ? partialConfig.mustDoLabel : existing.mustDoLabel,
-    mustKnowLabel: partialConfig.mustKnowLabel !== undefined ? partialConfig.mustKnowLabel : existing.mustKnowLabel
+    mustKnowLabel: partialConfig.mustKnowLabel !== undefined ? partialConfig.mustKnowLabel : existing.mustKnowLabel,
+    markProcessedAsRead: partialConfig.markProcessedAsRead !== undefined ? partialConfig.markProcessedAsRead : existing.markProcessedAsRead,
+    removeUninterestingFromInbox: partialConfig.removeUninterestingFromInbox !== undefined ? partialConfig.removeUninterestingFromInbox : existing.removeUninterestingFromInbox
   };
 }
 
@@ -764,7 +766,9 @@ function handleEmailSettingsSubmit(e) {
       unreadOnly: getFormBoolean(formInputs.unreadOnly),
       inboxOnly: getFormBoolean(formInputs.inboxOnly),
       mustDoLabel: getFormValue(formInputs.mustDoLabel),
-      mustKnowLabel: getFormValue(formInputs.mustKnowLabel)
+      mustKnowLabel: getFormValue(formInputs.mustKnowLabel),
+      markProcessedAsRead: getFormBoolean(formInputs.markProcessedAsRead),
+      removeUninterestingFromInbox: getFormBoolean(formInputs.removeUninterestingFromInbox)
     };
     
     const mergedConfig = mergeConfiguration(partialConfig);
@@ -838,7 +842,9 @@ function handleOnboardingFinish(e) {
       unreadOnly: getFormBoolean(formInputs.unreadOnly),
       inboxOnly: getFormBoolean(formInputs.inboxOnly),
       mustDoLabel: getFormValue(formInputs.mustDoLabel),
-      mustKnowLabel: getFormValue(formInputs.mustKnowLabel)
+      mustKnowLabel: getFormValue(formInputs.mustKnowLabel),
+      markProcessedAsRead: getFormBoolean(formInputs.markProcessedAsRead),
+      removeUninterestingFromInbox: getFormBoolean(formInputs.removeUninterestingFromInbox)
     };
     
     // Merge and save
@@ -871,6 +877,8 @@ function handleNukeSettings() {
     properties.deleteProperty('inboxOnly');
     properties.deleteProperty('mustDoLabel');
     properties.deleteProperty('mustKnowLabel');
+    properties.deleteProperty('markProcessedAsRead');
+    properties.deleteProperty('removeUninterestingFromInbox');
     
     return buildOnboardingCard(1);
   } catch (error) {

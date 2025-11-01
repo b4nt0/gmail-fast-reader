@@ -192,7 +192,17 @@ function buildEmailSettingsCard() {
         .setTitle('Label for "I must know" emails (optional)')
         .setFieldName('mustKnowLabel')
         .setValue(config.mustKnowLabel || '')
-        .setSuggestionsAction(CardService.newAction().setFunctionName('handleLabelSuggestions'))))
+        .setSuggestionsAction(CardService.newAction().setFunctionName('handleLabelSuggestions')))
+      .addWidget(CardService.newSelectionInput()
+        .setType(CardService.SelectionInputType.CHECK_BOX)
+        .setTitle('')
+        .setFieldName('markProcessedAsRead')
+        .addItem('Mark processed emails as read', 'true', config.markProcessedAsRead))
+      .addWidget(CardService.newSelectionInput()
+        .setType(CardService.SelectionInputType.CHECK_BOX)
+        .setTitle('')
+        .setFieldName('removeUninterestingFromInbox')
+        .addItem('Remove uninteresting emails from inbox', 'true', config.removeUninterestingFromInbox)))
     .addSection(CardService.newCardSection()
       .addWidget(CardService.newButtonSet()
         .addButton(CardService.newTextButton()
@@ -310,7 +320,17 @@ function buildOnboardingCard(step = 1) {
         .setTitle('Label for "I must know" emails (optional)')
         .setFieldName('mustKnowLabel')
         .setValue(config.mustKnowLabel || '')
-        .setSuggestionsAction(CardService.newAction().setFunctionName('handleLabelSuggestions'))));
+        .setSuggestionsAction(CardService.newAction().setFunctionName('handleLabelSuggestions')))
+      .addWidget(CardService.newSelectionInput()
+        .setType(CardService.SelectionInputType.CHECK_BOX)
+        .setTitle('')
+        .setFieldName('markProcessedAsRead')
+        .addItem('Mark processed emails as read', 'true', config.markProcessedAsRead))
+      .addWidget(CardService.newSelectionInput()
+        .setType(CardService.SelectionInputType.CHECK_BOX)
+        .setTitle('')
+        .setFieldName('removeUninterestingFromInbox')
+        .addItem('Remove uninteresting emails from inbox', 'true', config.removeUninterestingFromInbox)));
   }
     
   // Navigation buttons

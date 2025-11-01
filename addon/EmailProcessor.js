@@ -296,6 +296,9 @@ function processEmailsInBatches(emailThreads, config) {
       // Apply labels to interesting emails from this batch
       applyLabelsToInterestingEmails(batchResults, config);
       
+      // Mark processed emails as read if enabled
+      markProcessedEmailsAsRead(batchResults, config);
+      
       // Update progress after batch processing
       processedThreads += currentBatch.length;
       processedMessages += currentBatch.reduce((total, t) => total + t.emails.length, 0);
@@ -335,6 +338,9 @@ function processEmailsInBatches(emailThreads, config) {
       
       // Apply labels to interesting emails from this single thread
       applyLabelsToInterestingEmails(batchResults, config);
+      
+      // Mark processed emails as read if enabled
+      markProcessedEmailsAsRead(batchResults, config);
       
       allResults.batchesProcessed++;
       
@@ -376,6 +382,9 @@ function processEmailsInBatches(emailThreads, config) {
     // Apply labels to interesting emails from this final batch
     applyLabelsToInterestingEmails(batchResults, config);
     
+    // Mark processed emails as read if enabled
+    markProcessedEmailsAsRead(batchResults, config);
+    
     allResults.batchesProcessed++;
     
     // Update final progress
@@ -384,6 +393,9 @@ function processEmailsInBatches(emailThreads, config) {
     updateProcessingProgress(processedThreads, totalThreads, processedMessages, totalMessages, 
       `Analysis complete! Processed ${processedThreads}/${totalThreads} threads and ${processedMessages}/${totalMessages} messages.`);
   }
+  
+  // Remove uninteresting emails from inbox after all batches are processed
+  removeUninterestingEmailsFromInbox(emailThreads, allResults, config);
   
   return allResults;
 }
@@ -715,5 +727,136 @@ function applyLabelsToInterestingEmails(results, config) {
     }
   } catch (error) {
     console.error('Error in applyLabelsToInterestingEmails:', error);
+  }
+}
+
+/**
+ * Mark processed emails as read based on configuration
+ */
+function markProcessedEmailsAsRead(results, config) {
+  if (!config.markProcessedAsRead) {
+    return;
+  }
+  
+  try {
+    // Combine all interesting emails
+    const allProcessedEmails = (results.mustDo || []).concat(results.mustKnow || []);
+    
+    for (const email of allProcessedEmails) {
+      try {
+        let message = null;
+        // Try to get message by emailId first
+        if (email.emailId) {
+          try {
+            message = GmailApp.getMessageById(email.emailId);
+          } catch (err) {
+            // Ignore if not found
+          }
+        }
+        // Fallback to rfc822MessageId search
+        if (!message && email.rfc822MessageId) {
+          try {
+            const threads = GmailApp.search(`rfc822msgid:${email.rfc822MessageId}`);
+            if (threads.length > 0) {
+              const messages = threads[0].getMessages();
+              for (const msg of messages) {
+                try {
+                  const rawContent = msg.getRawContent();
+                  const match = rawContent.match(/Message-ID:\s*<([^>]+)>/i);
+                  if (match && match[1] === email.rfc822MessageId) {
+                    message = msg;
+                    break;
+                  }
+                } catch (innerErr) {
+                  // Ignore
+                }
+              }
+            }
+          } catch (searchErr) {
+            // Ignore
+          }
+        }
+        // Mark message as read
+        if (message) {
+          try {
+            message.markRead();
+          } catch (markErr) {
+            console.warn(`Could not mark email ${email.subject} as read:`, markErr);
+          }
+        }
+      } catch (error) {
+        console.error(`Error marking email ${email.subject} as read:`, error);
+      }
+    }
+  } catch (error) {
+    console.error('Error in markProcessedEmailsAsRead:', error);
+  }
+}
+
+/**
+ * Remove uninteresting emails from inbox based on configuration
+ * Uninteresting = threads that have no emails in mustDo or mustKnow results
+ */
+function removeUninterestingEmailsFromInbox(emailThreads, results, config) {
+  if (!config.removeUninterestingFromInbox) {
+    return;
+  }
+  
+  try {
+    // Collect all email IDs from interesting results
+    const interestingEmailIds = new Set();
+    const interestingRfc822Ids = new Set();
+    
+    // Add mustDo emails
+    (results.mustDo || []).forEach(email => {
+      if (email.emailId) interestingEmailIds.add(email.emailId);
+      if (email.rfc822MessageId) interestingRfc822Ids.add(email.rfc822MessageId);
+    });
+    
+    // Add mustKnow emails
+    (results.mustKnow || []).forEach(email => {
+      if (email.emailId) interestingEmailIds.add(email.emailId);
+      if (email.rfc822MessageId) interestingRfc822Ids.add(email.rfc822MessageId);
+    });
+    
+    // Get inbox label
+    let inboxLabel;
+    try {
+      inboxLabel = GmailApp.getInboxLabel();
+    } catch (error) {
+      console.warn('Could not get inbox label:', error);
+      return;
+    }
+    
+    // Check each thread to see if it contains any interesting emails
+    for (const threadData of emailThreads || []) {
+      try {
+        // Check if any email in this thread is interesting
+        let hasInterestingEmail = false;
+        for (const email of threadData.emails || []) {
+          if (interestingEmailIds.has(email.id) || 
+              (email.rfc822MessageId && interestingRfc822Ids.has(email.rfc822MessageId))) {
+            hasInterestingEmail = true;
+            break;
+          }
+        }
+        
+        // If thread has no interesting emails, remove it from inbox
+        if (!hasInterestingEmail) {
+          try {
+            const thread = GmailApp.getThreadById(threadData.threadId);
+            if (thread) {
+              thread.removeLabel(inboxLabel);
+            }
+          } catch (threadErr) {
+            console.warn(`Could not remove thread ${threadData.threadId} from inbox:`, threadErr);
+          }
+        }
+      } catch (error) {
+        console.error(`Error processing thread ${threadData.threadId}:`, error);
+      }
+    }
+  } catch (error) {
+    console.error('Error in removeUninterestingEmailsFromInbox:', error);
   }
 }

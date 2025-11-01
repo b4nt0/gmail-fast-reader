@@ -32,7 +32,9 @@ function getConfiguration() {
     unreadOnly: getBoolProp('unreadOnly', false),
     inboxOnly: getBoolProp('inboxOnly', true),
     mustDoLabel: getProp('mustDoLabel', 'TODO'),
-    mustKnowLabel: getProp('mustKnowLabel', 'FYI')
+    mustKnowLabel: getProp('mustKnowLabel', 'FYI'),
+    markProcessedAsRead: getBoolProp('markProcessedAsRead', false),
+    removeUninterestingFromInbox: getBoolProp('removeUninterestingFromInbox', false)
   };
 }
 
@@ -70,7 +72,9 @@ function saveConfiguration(config) {
     'unreadOnly': safeBoolean(config.unreadOnly) ? 'true' : 'false',
     'inboxOnly': safeBoolean(config.inboxOnly) ? 'true' : 'false',
     'mustDoLabel': safeString(config.mustDoLabel, ''),
-    'mustKnowLabel': safeString(config.mustKnowLabel, '')
+    'mustKnowLabel': safeString(config.mustKnowLabel, ''),
+    'markProcessedAsRead': safeBoolean(config.markProcessedAsRead) ? 'true' : 'false',
+    'removeUninterestingFromInbox': safeBoolean(config.removeUninterestingFromInbox) ? 'true' : 'false'
   });
 }
 
