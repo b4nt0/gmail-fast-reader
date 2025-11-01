@@ -544,14 +544,14 @@ EXAMPLE: If an email is about a payment due next week, it should go in "mustDo" 
       content: `MY "I MUST DO" TOPICS:
 ${mustDoTopicsList}
 
-${config.mustDoOther ? 'If an email does not fit any of my topics, but feels important, you may create a new topic. If it is not important enough, do not include it in any topic, skip it instead.' : 'If an email does not fit any of my topics, do not include it in any topic, skip it instead.'}`
+${config.mustDoOther ? 'If an email does not fit any of my topics, but is actionable and important (for example, payments, fines, taxes, deadlines, meetings), you may still select it and mark the topic as "other". If it is not important enough, do not include it in any topic, skip it instead.' : 'If an email does not fit any of my topics, do not include it in any topic, skip it instead.'}`
     },
     {
       role: 'user',
       content: `MY "I MUST KNOW" TOPICS:
 ${mustKnowTopicsList}
 
-${config.mustKnowOther ? 'If an email does not fit any of my topics, but feels important, you may create a new topic. If it is not important enough, do not include it in any topic, skip it instead.' : 'If an email does not fit any of my topics, do not include it in any topic, skip it instead.'}`
+${config.mustKnowOther ? 'If an email does not fit any of my topics, but contains important facts, events, or updates, list it as "other" (for example, price changes, information from lawyers, police, disasters and emergencies). If it is not important enough, do not include it in any topic, skip it instead.' : 'If an email does not fit any of my topics, do not include it in any topic, skip it instead.'}`
     }
   ];
   
