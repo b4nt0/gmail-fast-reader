@@ -590,7 +590,7 @@ function deleteDispatcherTriggers() {
     .forEach(function(t) { ScriptApp.deleteTrigger(t); });
 }
 
-  /**
+/**
    * Dispatcher: advances active processing if present; otherwise runs passive hourly
    */
 function runDispatcher() {
@@ -928,13 +928,13 @@ function startBackgroundEmailProcessing(timeRange) {
 
   try {
   
-     // Store processing status
-     const properties = PropertiesService.getUserProperties();
-     // Schedule parameters: one-off trigger delay and expected start buffer
-     const triggerDelayMs = 60 * 1000; // 1 minute kickoff
-     const expectedBufferMs = calculateExpectedStartBuffer(triggerDelayMs);
-     const expectedAt = new Date(Date.now() + expectedBufferMs).toISOString();
-     startProcessingState(timeRange, expectedAt);
+    // Store processing status
+    const properties = PropertiesService.getUserProperties();
+    // Schedule parameters: one-off trigger delay and expected start buffer
+    const triggerDelayMs = 60 * 1000; // 1 minute kickoff
+    const expectedBufferMs = calculateExpectedStartBuffer(triggerDelayMs);
+    const expectedAt = new Date(Date.now() + expectedBufferMs).toISOString();
+    startProcessingState(timeRange, expectedAt);
 
     // Initialize chunked processing with 2-day chunks
     const dateRange = calculateDateRange(timeRange);
@@ -1221,7 +1221,7 @@ function sendProcessingErrorEmail(errorMessage) {
 function sendProcessingTimeoutEmail() {
   const config = getConfiguration();
   const subject = `${config.addonName} - Processing Timeout - ${new Date().toLocaleDateString()}`;
-  const body = `Email processing timed out.\n\nThis usually happens when processing a large number of emails. Please try:\n\n1. Using a shorter time range (e.g., 6 hours instead of 7 days)\n2. Reducing the number of topics to focus on\n3. Checking your internet connection\n\nYou can check the status in the Gmail Fast Reader add-on.`;
+  const body = 'Email processing timed out.\n\nThis usually happens when processing a large number of emails. Please try:\n\n1. Using a shorter time range (e.g., 6 hours instead of 7 days)\n2. Reducing the number of topics to focus on\n3. Checking your internet connection\n\nYou can check the status in the Gmail Fast Reader add-on.';
   
   GmailApp.sendEmail(
     getUserEmailAddress(),
@@ -1503,21 +1503,21 @@ function buildLatestRunStatsCard() {
     let statusText = latestStats.status;
     
     switch (latestStats.status) {
-      case PROCESSING_STATUS.COMPLETED:
-        statusIcon = '✅';
-        statusColor = 'green';
-        statusText = 'Completed Successfully';
-        break;
-      case PROCESSING_STATUS.ERROR:
-        statusIcon = '❌';
-        statusColor = 'red';
-        statusText = 'Failed';
-        break;
-      case PROCESSING_STATUS.TIMEOUT:
-        statusIcon = '⏰';
-        statusColor = 'orange';
-        statusText = 'Timed Out';
-        break;
+    case PROCESSING_STATUS.COMPLETED:
+      statusIcon = '✅';
+      statusColor = 'green';
+      statusText = 'Completed Successfully';
+      break;
+    case PROCESSING_STATUS.ERROR:
+      statusIcon = '❌';
+      statusColor = 'red';
+      statusText = 'Failed';
+      break;
+    case PROCESSING_STATUS.TIMEOUT:
+      statusIcon = '⏰';
+      statusColor = 'orange';
+      statusText = 'Timed Out';
+      break;
     }
     
     // Build statistics text

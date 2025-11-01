@@ -56,23 +56,23 @@ function calculateDateRange(timeRange) {
   let startDate;
   
   switch (timeRange) {
-    case '6hours':
-      startDate = new Date(now.getTime() - 6 * 60 * 60 * 1000);
-      break;
-    case '12hours':
-      startDate = new Date(now.getTime() - 12 * 60 * 60 * 1000);
-      break;
-    case '1day':
-      startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-      break;
-    case '2days':
-      startDate = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
-      break;
-    case '7days':
-      startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      break;
-    default:
-      startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  case '6hours':
+    startDate = new Date(now.getTime() - 6 * 60 * 60 * 1000);
+    break;
+  case '12hours':
+    startDate = new Date(now.getTime() - 12 * 60 * 60 * 1000);
+    break;
+  case '1day':
+    startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    break;
+  case '2days':
+    startDate = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+    break;
+  case '7days':
+    startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    break;
+  default:
+    startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
   }
   
   return {
