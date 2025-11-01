@@ -15,11 +15,13 @@ const builtInServices = [
   'CardService',
   'PropertiesService',
   'GmailApp',
+  'Gmail',
   'ScriptApp',
   'Session',
   'UrlFetchApp',
   'Logger',
   'Utilities',
+  'DriveApp',
   'console'
 ];
 

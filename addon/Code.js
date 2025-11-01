@@ -259,7 +259,7 @@ function runPassiveWorkflow() {
     // Process emails using existing batch processing logic
     const results = processEmailsInBatches(emailThreads, config);
     
-    // Only send summary email if interesting emails were found
+    // Accumulate results if interesting emails were found
     if (results.mustDo.length > 0 || results.mustKnow.length > 0) {
       // Update tracking properties with first processed message
       if (emailThreads.length > 0 && emailThreads[0].emails.length > 0) {
@@ -270,37 +270,27 @@ function runPassiveWorkflow() {
         });
       }
       
-      // Send summary email
-      const finalResults = {
-        mustDo: results.mustDo || [],
-        mustKnow: results.mustKnow || [],
-        totalProcessed: results.totalProcessed || 0,
-        message: `Processed ${results.totalProcessed || 0} emails in passive workflow.`,
-        timeRange: 'passive',
-        actualStartDate: dateRange.start.toISOString(),
-        actualEndDate: dateRange.end.toISOString()
-      };
+      // Load existing accumulated results from Drive
+      const accumulated = loadAccumulatedResults();
       
-      const htmlContent = generateSummaryHTML(finalResults, config);
-      const subject = `${config.addonName} - Passive Workflow Summary - ${new Date().toLocaleDateString()}`;
-      
-      GmailApp.sendEmail(
-        getUserEmailAddress(),
-        subject,
-        '',
-        {
-          htmlBody: htmlContent,
-          name: config.addonName
-        }
+      // Merge new results into accumulated results
+      const mergedResults = mergeAccumulatedResults(
+        accumulated,
+        results,
+        dateRange.start,
+        dateRange.end
       );
       
-      // Mark email as important or starred
-      markEmailAsImportantOrStarred(subject);
+      // Save updated accumulated results to Drive
+      saveAccumulatedResults(mergedResults);
       
-      console.log(`Passive workflow completed - sent summary with ${finalResults.mustDo.length} actionable and ${finalResults.mustKnow.length} informational items`);
+      console.log(`Passive workflow completed - accumulated results: ${mergedResults.mustDo.length} actionable and ${mergedResults.mustKnow.length} informational items (total processed: ${mergedResults.totalProcessed})`);
     } else {
       console.log('Passive workflow completed - no interesting emails found');
     }
+    
+    // Check if we should send daily summary (within time window and haven't sent today)
+    sendDailySummaryIfNeeded(config);
     
   } catch (error) {
     console.error('Error in passive workflow:', error);
@@ -326,6 +316,181 @@ function runPassiveWorkflow() {
     // Always release lock
     markChunkEnded();
     unlock();
+  }
+}
+
+/**
+ * Get the last date when a summary was sent (YYYY-MM-DD format in user's timezone)
+ * @returns {string|null} Date string or null if never sent
+ */
+function getLastSummaryDate() {
+  const properties = PropertiesService.getUserProperties();
+  return properties.getProperty('passiveLastSummaryDate');
+}
+
+/**
+ * Set the last date when a summary was sent
+ * @param {string} dateString - Date string in YYYY-MM-DD format
+ */
+function setLastSummaryDate(dateString) {
+  const properties = PropertiesService.getUserProperties();
+  properties.setProperty('passiveLastSummaryDate', dateString);
+}
+
+/**
+ * Check if current time is within the sending window (21:00-23:59) in user's timezone
+ * @param {string} userTimeZone - User's timezone (e.g., 'America/New_York')
+ * @returns {boolean} True if within time window
+ */
+function isWithinTimeWindow(userTimeZone) {
+  try {
+    const now = new Date();
+    // Get current time in user's timezone
+    const userTimeString = Utilities.formatDate(now, userTimeZone, 'HH:mm');
+    const parts = userTimeString.split(':');
+    const hour = parseInt(parts[0], 10);
+    const minute = parseInt(parts[1], 10);
+    const timeInMinutes = hour * 60 + minute;
+    
+    // 21:00 = 21 * 60 = 1260 minutes
+    // 23:59 = 23 * 60 + 59 = 1439 minutes
+    return timeInMinutes >= 1260 && timeInMinutes < 1440; // 21:00 to 23:59 (inclusive of 21:00, exclusive of midnight)
+  } catch (error) {
+    console.error('Error checking time window:', error);
+    return false;
+  }
+}
+
+/**
+ * Get current date string in user's timezone (YYYY-MM-DD format)
+ * @param {string} userTimeZone - User's timezone (e.g., 'America/New_York')
+ * @returns {string} Date string in YYYY-MM-DD format
+ */
+function getCurrentDateString(userTimeZone) {
+  try {
+    const now = new Date();
+    return Utilities.formatDate(now, userTimeZone, 'yyyy-MM-dd');
+  } catch (error) {
+    console.error('Error getting current date string:', error);
+    // Fallback to UTC
+    const now = new Date();
+    return Utilities.formatDate(now, 'UTC', 'yyyy-MM-dd');
+  }
+}
+
+/**
+ * Check if summary has already been sent today
+ * @param {string} userTimeZone - User's timezone (e.g., 'America/New_York')
+ * @returns {boolean} True if summary was sent today
+ */
+function hasSentSummaryToday(userTimeZone) {
+  const lastSummaryDate = getLastSummaryDate();
+  if (!lastSummaryDate) {
+    return false;
+  }
+  
+  const todayDateString = getCurrentDateString(userTimeZone);
+  return lastSummaryDate === todayDateString;
+}
+
+/**
+ * Check if we should send the daily summary
+ * @param {string} userTimeZone - User's timezone (e.g., 'America/New_York')
+ * @returns {boolean} True if should send (within time window and haven't sent today)
+ */
+function shouldSendDailySummary(userTimeZone) {
+  if (!isWithinTimeWindow(userTimeZone)) {
+    return false;
+  }
+  
+  if (hasSentSummaryToday(userTimeZone)) {
+    return false;
+  }
+  
+  return true;
+}
+
+/**
+ * Merge new results into accumulated results
+ * @param {Object} accumulated - Existing accumulated results
+ * @param {Object} newResults - New results from current processing
+ * @param {Date} processingStartDate - Start date of current processing batch
+ * @param {Date} processingEndDate - End date of current processing batch
+ * @returns {Object} Merged accumulated results
+ */
+function mergeAccumulatedResults(accumulated, newResults, processingStartDate, processingEndDate) {
+  const merged = {
+    mustDo: (accumulated.mustDo || []).concat(newResults.mustDo || []),
+    mustKnow: (accumulated.mustKnow || []).concat(newResults.mustKnow || []),
+    totalProcessed: (accumulated.totalProcessed || 0) + (newResults.totalProcessed || 0),
+    firstDate: accumulated.firstDate || processingStartDate.toISOString(),
+    lastDate: processingEndDate.toISOString()
+  };
+  
+  return merged;
+}
+
+/**
+ * Send daily summary if conditions are met
+ * @param {Object} config - Configuration object
+ * @returns {boolean} True if summary was sent successfully, false otherwise
+ */
+function sendDailySummaryIfNeeded(config) {
+  if (!shouldSendDailySummary(config.timeZone)) {
+    return false;
+  }
+  
+  try {
+    // Load accumulated results from Drive
+    const accumulated = loadAccumulatedResults();
+    
+    // Check if there's anything to send
+    if (accumulated.mustDo.length === 0 && accumulated.mustKnow.length === 0) {
+      console.log('Daily summary check: no accumulated results to send');
+      return false;
+    }
+    
+    // Prepare results for summary generation
+    const summaryResults = {
+      mustDo: accumulated.mustDo || [],
+      mustKnow: accumulated.mustKnow || [],
+      totalProcessed: accumulated.totalProcessed || 0,
+      message: `Daily summary: Processed ${accumulated.totalProcessed || 0} emails.`,
+      timeRange: 'daily',
+      actualStartDate: accumulated.firstDate || new Date().toISOString(),
+      actualEndDate: accumulated.lastDate || new Date().toISOString()
+    };
+    
+    // Generate and send summary email
+    const htmlContent = generateSummaryHTML(summaryResults, config);
+    const today = getCurrentDateString(config.timeZone);
+    const subject = `${config.addonName} - Daily Summary - ${today}`;
+    
+    GmailApp.sendEmail(
+      getUserEmailAddress(),
+      subject,
+      '',
+      {
+        htmlBody: htmlContent,
+        name: config.addonName
+      }
+    );
+    
+    // Mark email as important or starred
+    markEmailAsImportantOrStarred(subject);
+    
+    // Clear accumulated results from Drive after successful send
+    clearAccumulatedResults();
+    
+    // Update last summary date
+    setLastSummaryDate(today);
+    
+    console.log(`Daily summary sent successfully - ${summaryResults.mustDo.length} actionable and ${summaryResults.mustKnow.length} informational items`);
+    return true;
+  } catch (error) {
+    console.error('Error sending daily summary:', error);
+    // Don't clear accumulated results on error - they'll be sent next day
+    return false;
   }
 }
 
