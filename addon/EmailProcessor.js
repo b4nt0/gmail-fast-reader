@@ -836,7 +836,11 @@ function removeUninterestingEmailsFromInbox(emailThreads, results, config) {
     // Get inbox label
     let inboxLabel;
     try {
-      inboxLabel = GmailApp.getInboxLabel();
+      inboxLabel = GmailApp.getUserLabelByName('INBOX');
+      if (!inboxLabel) {
+        console.warn('Could not get inbox label: INBOX label not found');
+        return;
+      }
     } catch (error) {
       console.warn('Could not get inbox label:', error);
       return;

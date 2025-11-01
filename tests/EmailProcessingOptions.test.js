@@ -123,8 +123,12 @@ describe('Email Processing Options Regression Tests', () => {
         }
         return [];
       }),
-      getInboxLabel: jest.fn(() => mockInboxLabel),
-      getUserLabelByName: jest.fn(() => null),
+      getUserLabelByName: jest.fn((name) => {
+        if (name === 'INBOX') {
+          return mockInboxLabel;
+        }
+        return null;
+      }),
       createLabel: jest.fn((name) => ({ getName: () => name })),
       sendEmail: jest.fn()
     };
@@ -330,7 +334,10 @@ describe('Email Processing Options Regression Tests', () => {
 
     test('should remove uninteresting threads from inbox when option is enabled', () => {
       const mockInboxLabel = { getName: () => 'INBOX' };
-      mockGmailApp.getInboxLabel = jest.fn(() => mockInboxLabel);
+      mockGmailApp.getUserLabelByName = jest.fn((name) => {
+        if (name === 'INBOX') return mockInboxLabel;
+        return null;
+      });
 
       const mockThread = {
         getId: () => 'thread1',
@@ -367,7 +374,10 @@ describe('Email Processing Options Regression Tests', () => {
 
     test('should not remove threads with interesting emails', () => {
       const mockInboxLabel = { getName: () => 'INBOX' };
-      mockGmailApp.getInboxLabel = jest.fn(() => mockInboxLabel);
+      mockGmailApp.getUserLabelByName = jest.fn((name) => {
+        if (name === 'INBOX') return mockInboxLabel;
+        return null;
+      });
 
       const mockThread = {
         getId: () => 'thread1',
@@ -407,7 +417,10 @@ describe('Email Processing Options Regression Tests', () => {
 
     test('should handle threads with rfc822MessageId matching', () => {
       const mockInboxLabel = { getName: () => 'INBOX' };
-      mockGmailApp.getInboxLabel = jest.fn(() => mockInboxLabel);
+      mockGmailApp.getUserLabelByName = jest.fn((name) => {
+        if (name === 'INBOX') return mockInboxLabel;
+        return null;
+      });
 
       const mockThread = {
         getId: () => 'thread1',
@@ -447,7 +460,10 @@ describe('Email Processing Options Regression Tests', () => {
   describe('Integration tests', () => {
     test('both options work together correctly', () => {
       const mockInboxLabel = { getName: () => 'INBOX' };
-      mockGmailApp.getInboxLabel = jest.fn(() => mockInboxLabel);
+      mockGmailApp.getUserLabelByName = jest.fn((name) => {
+        if (name === 'INBOX') return mockInboxLabel;
+        return null;
+      });
 
       const mockMessage1 = {
         getId: () => 'msg1',
