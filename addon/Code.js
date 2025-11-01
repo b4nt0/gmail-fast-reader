@@ -294,6 +294,9 @@ function runPassiveWorkflow() {
         }
       );
       
+      // Mark email as important or starred
+      markEmailAsImportantOrStarred(subject);
+      
       console.log(`Passive workflow completed - sent summary with ${finalResults.mustDo.length} actionable and ${finalResults.mustKnow.length} informational items`);
     } else {
       console.log('Passive workflow completed - no interesting emails found');
@@ -831,6 +834,9 @@ function sendProcessingCompleteEmail() {
       name: config.addonName
     }
   );
+  
+  // Mark email as important or starred
+  markEmailAsImportantOrStarred(subject);
 }
 
 /**

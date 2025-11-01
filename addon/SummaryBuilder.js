@@ -82,11 +82,74 @@ function sendSummaryEmail(e) {
       }
     );
     
+    // Mark email as important or starred
+    markEmailAsImportantOrStarred(subject);
+    
     return buildConfigSuccessCard(); // Reuse success card for email sent
     
   } catch (error) {
     console.error('Error sending summary email:', error);
     return buildErrorCard('Failed to send summary email: ' + error.message);
+  }
+}
+
+/**
+ * Mark a recently sent email as important or starred
+ * @param {string} subject - The subject line of the email to find
+ * @param {number} minutesBack - How many minutes back to search (default: 2)
+ */
+function markEmailAsImportantOrStarred(subject, minutesBack = 2) {
+  try {
+    // Search for the email by subject within the last few minutes
+    const query = `subject:"${subject}" newer_than:${minutesBack}m`;
+    const threads = GmailApp.search(query, 0, 5);
+    
+    if (threads.length === 0) {
+      console.warn('Could not find sent email to mark as important');
+      return;
+    }
+    
+    // Get the first message from the most recent thread
+    const messages = threads[0].getMessages();
+    if (messages.length === 0) {
+      console.warn('No messages found in thread');
+      return;
+    }
+    
+    const message = messages[messages.length - 1]; // Get the last message (the one we just sent)
+    const messageId = message.getId();
+    
+    // Try to mark as important first using Gmail API
+    try {
+      Gmail.Users.Messages.modify(
+        {
+          addLabelIds: ['IMPORTANT']
+        },
+        'me',
+        messageId
+      );
+      console.log('Successfully marked email as important');
+      return;
+    } catch (importantError) {
+      console.warn('Could not mark as important, trying star:', importantError);
+      
+      // Fallback to star
+      try {
+        Gmail.Users.Messages.modify(
+          {
+            addLabelIds: ['STARRED']
+          },
+          'me',
+          messageId
+        );
+        console.log('Successfully starred email');
+      } catch (starError) {
+        console.error('Could not mark email as important or starred:', starError);
+      }
+    }
+  } catch (error) {
+    console.error('Error marking email as important/starred:', error);
+    // Fail silently - don't break the email sending flow
   }
 }
 
