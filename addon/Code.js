@@ -570,6 +570,15 @@ function onGmailMessageOpen(e) {
 }
 
 /**
+ * Check if dispatcher trigger exists
+ * @return {boolean} True if dispatcher trigger is installed
+ */
+function isDispatcherTriggerInstalled() {
+  return ScriptApp.getProjectTriggers()
+    .some(function(t) { return t.getHandlerFunction() === 'runDispatcher'; });
+}
+
+/**
  * Ensure a single dispatcher trigger exists (runs every minute)
  */
 function ensureDispatcherScheduled() {
@@ -1261,6 +1270,30 @@ function handleEmergencyReset() {
     return buildConfigSuccessCard();
   } catch (e) {
     return buildErrorCard('Emergency reset failed: ' + e.message);
+  }
+}
+
+/**
+ * Handle reinstall dispatcher trigger action from UI
+ */
+function handleReinstallDispatcher() {
+  try {
+    ensureDispatcherScheduled();
+    return CardService.newCardBuilder()
+      .setHeader(CardService.newCardHeader()
+        .setTitle('Timer Job Reinstalled'))
+      .addSection(CardService.newCardSection()
+        .addWidget(CardService.newTextParagraph()
+          .setText('✅ The automatic email scanning timer has been successfully reinstalled. Emails will now be scanned automatically on a regular basis.')))
+      .addSection(CardService.newCardSection()
+        .addWidget(CardService.newButtonSet()
+          .addButton(CardService.newTextButton()
+            .setText('🏠 Back to Main')
+            .setOnClickAction(CardService.newAction()
+              .setFunctionName('buildMainCard')))))
+      .build();
+  } catch (e) {
+    return buildErrorCard('Failed to reinstall timer job: ' + e.message);
   }
 }
 

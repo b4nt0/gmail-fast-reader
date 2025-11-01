@@ -44,10 +44,23 @@ function buildMainCard() {
     
   // Add passive workflow confirmation message if configured
   if (isConfigured) {
-    const passiveWorkflowSection = CardService.newCardSection()
-      .addWidget(CardService.newTextParagraph()
-        .setText('✅ Emails are being scanned automatically on a regular basis. You don\'t need to do anything - just wait for your daily summary!'));
-    cardBuilder.addSection(passiveWorkflowSection);
+    const hasDispatcher = isDispatcherTriggerInstalled();
+    if (hasDispatcher) {
+      const passiveWorkflowSection = CardService.newCardSection()
+        .addWidget(CardService.newTextParagraph()
+          .setText('✅ Emails are being scanned automatically on a regular basis. You don\'t need to do anything - just wait for your daily summary!'));
+      cardBuilder.addSection(passiveWorkflowSection);
+    } else {
+      const missingDispatcherSection = CardService.newCardSection()
+        .addWidget(CardService.newTextParagraph()
+          .setText('⚠️ The automatic email scanning timer is not installed. Click the button below to reinstall it and enable automatic scanning.'))
+        .addWidget(CardService.newButtonSet()
+          .addButton(CardService.newTextButton()
+            .setText('🔧 Reinstall Timer Job')
+            .setOnClickAction(CardService.newAction()
+              .setFunctionName('handleReinstallDispatcher'))));
+      cardBuilder.addSection(missingDispatcherSection);
+    }
   }
     
   // Always show status check button
