@@ -14,6 +14,9 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
+// Constants from DriveStorage.js
+const FILE_ID_PROPERTY_KEY = 'drive_accumulation_file_id';
+
 // Create a context for executing the Apps Script code
 const scriptContext = vm.createContext({
   ...global,
@@ -108,75 +111,93 @@ describe('Daily Summary Regression Tests', () => {
       getStore: () => mockPropertiesStore
     };
 
-    // Create mock DriveApp
-    const mockRootFolder = {
-      getFilesByName: jest.fn((name) => {
-        // Create a new iterator each time - but track consumption per iterator
-        const iteratorState = { consumed: false };
-        const fileIterator = {
-          hasNext: jest.fn(() => {
-            // Return true if file exists and hasn't been consumed by this iterator
-            return !iteratorState.consumed && Object.keys(driveFiles).includes(name);
+    // Helper function to create a mock file object
+    const createMockFile = (name, content = null) => {
+      const defaultContent = content || JSON.stringify({
+        mustDo: [],
+        mustKnow: [],
+        totalProcessed: 0,
+        firstDate: null,
+        lastDate: null
+      });
+      
+      const fileId = 'file-' + name;
+      if (!driveFiles[name]) {
+        driveFiles[name] = {
+          getId: jest.fn(() => fileId),
+          getName: jest.fn(() => name),
+          getBlob: jest.fn(() => ({
+            getDataAsString: jest.fn(() => {
+              // Always return the current content
+              return driveFiles[name].content || defaultContent;
+            })
+          })),
+          setContent: jest.fn((newContent) => {
+            driveFiles[name].content = newContent;
           }),
-          next: jest.fn(() => {
-            if (!driveFiles[name]) {
-              // File doesn't exist - create it lazily
-              const defaultContent = JSON.stringify({
-                mustDo: [],
-                mustKnow: [],
-                totalProcessed: 0,
-                firstDate: null,
-                lastDate: null
-              });
-              driveFiles[name] = {
-                getId: jest.fn(() => 'file-' + name),
-                getBlob: jest.fn(() => ({
-                  getDataAsString: jest.fn(() => {
-                    // Always return the current content
-                    return driveFiles[name].content || defaultContent;
-                  })
-                })),
-                setContent: jest.fn((content) => {
-                  driveFiles[name].content = content;
-                }),
-                setTrashed: jest.fn(() => {
-                  delete driveFiles[name];
-                }),
-                content: defaultContent
-              };
-            }
-            const file = driveFiles[name];
-            iteratorState.consumed = true; // Mark this iterator as consumed
-            return file;
-          })
+          setTrashed: jest.fn(() => {
+            delete driveFiles[name];
+          }),
+          content: defaultContent
         };
-        return fileIterator;
-      }),
-      createFile: jest.fn((name, content, mimeType) => {
-        if (!driveFiles[name]) {
-          driveFiles[name] = {
-            getId: jest.fn(() => 'file-' + name),
-            getBlob: jest.fn(() => ({
-              getDataAsString: jest.fn(() => {
-                // Always return the current content, not the initial content
-                return driveFiles[name].content || content;
-              })
-            })),
-            setContent: jest.fn((newContent) => {
-              driveFiles[name].content = newContent;
-            }),
-            setTrashed: jest.fn(() => {
-              delete driveFiles[name];
-            }),
-            content: content
-          };
-        }
-        return driveFiles[name];
-      })
+      }
+      return driveFiles[name];
     };
 
+    // Create mock DriveApp methods first (before defining mockDriveApp to avoid circular reference)
+    const mockGetFilesByName = jest.fn((name) => {
+      // Create a new iterator each time - but track consumption per iterator
+      const iteratorState = { consumed: false };
+      const fileIterator = {
+        hasNext: jest.fn(() => {
+          // Return true if file exists and hasn't been consumed by this iterator
+          return !iteratorState.consumed && Object.keys(driveFiles).includes(name);
+        }),
+        next: jest.fn(() => {
+          if (!driveFiles[name]) {
+            createMockFile(name);
+          }
+          const file = driveFiles[name];
+          iteratorState.consumed = true; // Mark this iterator as consumed
+          return file;
+        })
+      };
+      return fileIterator;
+    });
+
+    const mockCreateFile = jest.fn((name, content, mimeType) => {
+      return createMockFile(name, content);
+    });
+
+    const mockGetFileById = jest.fn((fileId) => {
+      // Find file by ID (ID format is 'file-<name>')
+      const name = Object.keys(driveFiles).find(n => {
+        const file = driveFiles[n];
+        return file && file.getId() === fileId;
+      });
+      if (name && driveFiles[name]) {
+        return driveFiles[name];
+      }
+      // If not found by name, try to find by actual ID
+      for (const fileName of Object.keys(driveFiles)) {
+        if (driveFiles[fileName] && driveFiles[fileName].getId() === fileId) {
+          return driveFiles[fileName];
+        }
+      }
+      throw new Error('File not found: ' + fileId);
+    });
+
+    // Create mock DriveApp
+    // New implementation uses DriveApp directly (not through getRootFolder)
     mockDriveApp = {
-      getRootFolder: jest.fn(() => mockRootFolder)
+      getRootFolder: jest.fn(() => ({
+        // Keep for backward compatibility in tests that still reference it
+        getFilesByName: mockGetFilesByName,
+        createFile: mockCreateFile
+      })),
+      getFilesByName: mockGetFilesByName,
+      createFile: mockCreateFile,
+      getFileById: mockGetFileById
     };
 
     // Create mock GmailApp
@@ -577,7 +598,8 @@ describe('Daily Summary Regression Tests', () => {
     test('should create file if it does not exist', () => {
       const result = scriptContext.loadAccumulatedResults();
       
-      expect(mockDriveApp.getRootFolder).toHaveBeenCalled();
+      // New implementation uses getFilesByName or createFile directly
+      expect(mockDriveApp.getFilesByName).toHaveBeenCalled();
       expect(driveFiles['gmail-fast-read-accumulated-results.json']).toBeDefined();
       expect(result).toEqual({
         mustDo: [],
@@ -589,20 +611,26 @@ describe('Daily Summary Regression Tests', () => {
     });
 
     test('should read existing file', () => {
+      const fileContent = {
+        mustDo: [{ subject: 'Test' }],
+        mustKnow: [],
+        totalProcessed: 10,
+        firstDate: '2024-01-15T10:00:00Z',
+        lastDate: '2024-01-15T11:00:00Z'
+      };
       driveFiles['gmail-fast-read-accumulated-results.json'] = {
         getId: jest.fn(() => 'file-id'),
+        getName: jest.fn(() => 'gmail-fast-read-accumulated-results.json'),
         getBlob: jest.fn(() => ({
-          getDataAsString: jest.fn(() => JSON.stringify({
-            mustDo: [{ subject: 'Test' }],
-            mustKnow: [],
-            totalProcessed: 10,
-            firstDate: '2024-01-15T10:00:00Z',
-            lastDate: '2024-01-15T11:00:00Z'
-          }))
+          getDataAsString: jest.fn(() => JSON.stringify(fileContent))
         })),
         setContent: jest.fn(),
-        setTrashed: jest.fn()
+        setTrashed: jest.fn(),
+        content: JSON.stringify(fileContent)
       };
+      
+      // Store the file ID in PropertiesService so getFileById can find it
+      mockPropertiesStore[FILE_ID_PROPERTY_KEY] = 'file-id';
 
       const result = scriptContext.loadAccumulatedResults();
       
@@ -629,16 +657,21 @@ describe('Daily Summary Regression Tests', () => {
     test('should clear file from Drive', () => {
       driveFiles['gmail-fast-read-accumulated-results.json'] = {
         getId: jest.fn(() => 'file-id'),
+        getName: jest.fn(() => 'gmail-fast-read-accumulated-results.json'),
         getBlob: jest.fn(() => ({
           getDataAsString: jest.fn(() => '{}')
         })),
         setContent: jest.fn(),
         setTrashed: jest.fn()
       };
+      
+      // Store the file ID in PropertiesService so getFileById can find it
+      mockPropertiesStore[FILE_ID_PROPERTY_KEY] = 'file-id';
 
       scriptContext.clearAccumulatedResults();
 
       expect(driveFiles['gmail-fast-read-accumulated-results.json'].setTrashed).toHaveBeenCalled();
+      expect(mockPropertiesStore[FILE_ID_PROPERTY_KEY]).toBeUndefined();
     });
   });
 });

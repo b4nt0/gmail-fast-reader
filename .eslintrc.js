@@ -33,6 +33,7 @@ module.exports = {
         'CardService': 'readonly',
         'DEBUG_USER_EMAIL': 'readonly',
         'DriveApp': 'readonly',
+        'FILE_ID_PROPERTY_KEY': 'readonly',
         'Gmail': 'readonly',
         'GmailApp': 'readonly',
         'Logger': 'readonly',

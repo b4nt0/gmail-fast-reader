@@ -3,21 +3,45 @@
  */
 
 const ACCUMULATION_FILE_NAME = 'gmail-fast-read-accumulated-results.json';
+const FILE_ID_PROPERTY_KEY = 'drive_accumulation_file_id';
 
 /**
  * Get or create the accumulation file on Google Drive
+ * Uses drive.file scope - stores file ID in PropertiesService to avoid needing getRootFolder()
  * @returns {GoogleAppsScript.Drive.File} The file object
  */
 function getOrCreateAccumulationFile() {
   try {
-    const rootFolder = DriveApp.getRootFolder();
-    const files = rootFolder.getFilesByName(ACCUMULATION_FILE_NAME);
+    const properties = PropertiesService.getUserProperties();
+    let fileId = properties.getProperty(FILE_ID_PROPERTY_KEY);
+    
+    // Try to get file by stored ID first
+    if (fileId) {
+      try {
+        const file = DriveApp.getFileById(fileId);
+        // Verify file still exists and is accessible
+        file.getName(); // This will throw if file doesn't exist or isn't accessible
+        return file;
+      } catch (e) {
+        // File ID is invalid or file was deleted, clear it and search/create new
+        properties.deleteProperty(FILE_ID_PROPERTY_KEY);
+        fileId = null;
+      }
+    }
+    
+    // File ID not found or invalid, search for file by name
+    // This only finds files created by this app (within drive.file scope)
+    const files = DriveApp.getFilesByName(ACCUMULATION_FILE_NAME);
     
     if (files.hasNext()) {
-      return files.next();
+      const file = files.next();
+      // Store the ID for future reference
+      properties.setProperty(FILE_ID_PROPERTY_KEY, file.getId());
+      return file;
     }
     
     // File doesn't exist, create it with empty structure
+    // DriveApp.createFile() works with drive.file scope and creates in root
     const initialData = {
       mustDo: [],
       mustKnow: [],
@@ -26,12 +50,14 @@ function getOrCreateAccumulationFile() {
       lastDate: null
     };
     
-    const file = rootFolder.createFile(
+    const file = DriveApp.createFile(
       ACCUMULATION_FILE_NAME,
       JSON.stringify(initialData, null, 2),
       'application/json'
     );
     
+    // Store the file ID for future reference
+    properties.setProperty(FILE_ID_PROPERTY_KEY, file.getId());
     console.log('Created accumulation file on Drive:', file.getId());
     return file;
   } catch (error) {
@@ -105,9 +131,22 @@ function saveAccumulatedResults(results) {
  */
 function clearAccumulatedResults() {
   try {
-    const rootFolder = DriveApp.getRootFolder();
-    const files = rootFolder.getFilesByName(ACCUMULATION_FILE_NAME);
+    const properties = PropertiesService.getUserProperties();
+    const fileId = properties.getProperty(FILE_ID_PROPERTY_KEY);
     
+    if (fileId) {
+      try {
+        const file = DriveApp.getFileById(fileId);
+        file.setTrashed(true);
+        properties.deleteProperty(FILE_ID_PROPERTY_KEY);
+      } catch (e) {
+        // File doesn't exist or isn't accessible, just clear the property
+        properties.deleteProperty(FILE_ID_PROPERTY_KEY);
+      }
+    }
+    
+    // Also try to find and delete by name (in case ID was lost)
+    const files = DriveApp.getFilesByName(ACCUMULATION_FILE_NAME);
     while (files.hasNext()) {
       const file = files.next();
       file.setTrashed(true);
