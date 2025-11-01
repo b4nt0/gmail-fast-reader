@@ -51,9 +51,13 @@ function buildMainCard() {
           .setText('✅ Emails are being scanned automatically on a regular basis. You don\'t need to do anything - just wait for your daily summary!'));
       cardBuilder.addSection(passiveWorkflowSection);
     } else {
+      let message = '⚠️ The automatic email scanning timer is not installed. Click the button below to reinstall it and enable automatic scanning.';
+      if (isRunning) {
+        message = 'The automatic email scanning timer is temporarily disabled for the active email scanning process. Click the button below to reinstall it and enable automatic scanning.';
+      }
       const missingDispatcherSection = CardService.newCardSection()
         .addWidget(CardService.newTextParagraph()
-          .setText('⚠️ The automatic email scanning timer is not installed. Click the button below to reinstall it and enable automatic scanning.'))
+          .setText(message))
         .addWidget(CardService.newButtonSet()
           .addButton(CardService.newTextButton()
             .setText('🔧 Reinstall Timer Job')
