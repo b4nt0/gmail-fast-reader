@@ -36,39 +36,31 @@ function buildMainCard() {
       .addWidget(CardService.newButtonSet()
         .addButton(configureButton));
     
-    // Create scan emails button
-    const scanButton = CardService.newTextButton()
-      .setText('📧 Scan Emails')
-      .setOnClickAction(CardService.newAction()
-        .setFunctionName('buildActiveWorkflowCard'))
-      .setDisabled(!isConfigured || isRunning);
-    
-    // Create scan button section
-    const scanSection = CardService.newCardSection()
-      .addWidget(CardService.newButtonSet()
-        .addButton(scanButton));
-    
     // Build the card
     const cardBuilder = CardService.newCardBuilder()
       .setHeader(header)
       .addSection(welcomeSection)
-      .addSection(configureSection)
-      .addSection(scanSection);
+      .addSection(configureSection);
     
-    // Only add status check button if there's active processing or previous results
-    if (hasProcessStatus || hasPreviousResults) {
-      // Create status check button with highlighting if running
-      const statusButton = CardService.newTextButton()
-        .setText(isRunning ? '🔄 Check Status (Running)' : '🔄 Check Status')
-        .setOnClickAction(CardService.newAction()
-          .setFunctionName('checkProcessingStatus'));
-      
-      const statusSection = CardService.newCardSection()
-        .addWidget(CardService.newButtonSet()
-          .addButton(statusButton));
-      
-      cardBuilder.addSection(statusSection);
+    // Add passive workflow confirmation message if configured
+    if (isConfigured) {
+      const passiveWorkflowSection = CardService.newCardSection()
+        .addWidget(CardService.newTextParagraph()
+          .setText('✅ Emails are being scanned automatically on a regular basis. You don\'t need to do anything - just wait for your daily summary!'));
+      cardBuilder.addSection(passiveWorkflowSection);
     }
+    
+    // Always show status check button
+    const statusButton = CardService.newTextButton()
+      .setText(isRunning ? '🔄 Check Status (Running)' : '🔄 Check Status')
+      .setOnClickAction(CardService.newAction()
+        .setFunctionName('checkProcessingStatus'));
+    
+    const statusSection = CardService.newCardSection()
+      .addWidget(CardService.newButtonSet()
+        .addButton(statusButton));
+    
+    cardBuilder.addSection(statusSection);
     
     // Add warning section if not configured
     if (!isConfigured) {
@@ -351,6 +343,7 @@ function buildMainCard() {
     }
     
     const config = getConfiguration();
+    const isRunning = isProcessingRunning();
     
     const card = CardService.newCardBuilder()
       .setHeader(CardService.newCardHeader()
@@ -394,7 +387,17 @@ function buildMainCard() {
           .addButton(CardService.newTextButton()
             .setText('⚙️ System Settings')
             .setOnClickAction(CardService.newAction()
-              .setFunctionName('buildSystemSettingsCard')))));
+              .setFunctionName('buildSystemSettingsCard')))))
+      .addSection(CardService.newCardSection()
+        .setHeader('Scan Emails')
+        .addWidget(CardService.newTextParagraph()
+          .setText('Manually trigger an email scan for a specific time range. Your emails are also being scanned automatically in the background.'))
+        .addWidget(CardService.newButtonSet()
+          .addButton(CardService.newTextButton()
+            .setText('📧 Scan Emails')
+            .setOnClickAction(CardService.newAction()
+              .setFunctionName('buildActiveWorkflowCard'))
+            .setDisabled(isRunning))));
     
     // Add debug button only for debug user
     const userEmail = getUserEmailAddress();
