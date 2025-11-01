@@ -11,6 +11,12 @@ module.exports = {
     ecmaVersion: 2021,
     sourceType: 'module'
   },
+  ignorePatterns: [
+    'tests/**',
+    'scripts/**',
+    'node_modules/**',
+    '*.config.js'
+  ],
   rules: {
     'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
     'no-console': 'off',
