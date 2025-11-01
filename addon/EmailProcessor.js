@@ -860,6 +860,7 @@ function removeUninterestingEmailsFromInbox(emailThreads, results, config) {
           try {
             const thread = GmailApp.getThreadById(threadData.threadId);
             if (thread) {
+              console.log(`Removing uninteresting thread ${threadData.threadId} from inbox`);
               thread.removeLabel(inboxLabel);
             }
           } catch (threadErr) {
