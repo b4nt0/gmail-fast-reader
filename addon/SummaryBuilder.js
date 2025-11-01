@@ -132,7 +132,7 @@ function generateSummaryHTML(results, config) {
       <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
       <style>
         body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }
-        .header { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .header { background: #f8f9fa; padding: 20px; border-radius: 8px; margin-top: 30px; margin-bottom: 20px; }
         .section { margin-bottom: 30px; }
         .section h2 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
         .item { background: #fff; border: 1px solid #e1e8ed; border-radius: 6px; padding: 15px; margin-bottom: 10px; }
@@ -147,11 +147,6 @@ function generateSummaryHTML(results, config) {
       </style>
     </head>
     <body>
-      <div class="header">
-        <h1>${config.addonName} - ${timeRangeTitle}</h1>
-        <p>Generated on ${now.toLocaleDateString()} at ${now.toLocaleTimeString()}</p>
-        <p>Total emails processed: ${results.totalProcessed}</p>
-      </div>
   `;
   
   // I Must Do section
@@ -233,6 +228,15 @@ function generateSummaryHTML(results, config) {
       </div>
     `;
   }
+  
+  // Header block (moved to bottom)
+  html += `
+      <div class="header">
+        <h1>${config.addonName} - ${timeRangeTitle}</h1>
+        <p>Generated on ${now.toLocaleDateString()} at ${now.toLocaleTimeString()}</p>
+        <p>Total emails processed: ${results.totalProcessed}</p>
+      </div>
+  `;
   
   html += `
       <div class="footer">
