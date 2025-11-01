@@ -544,7 +544,7 @@ EXAMPLE: If an email is about a payment due next week, it should go in "mustDo" 
       content: `MY "I MUST DO" TOPICS:
 ${mustDoTopicsList}
 
-${config.mustDoOther ? 'If an email does not fit any of my topics, but is actionable and important (for example, payments, fines, taxes, deadlines, meetings), you may still select it and mark the topic as "other". If it is not important enough, do not include it in any topic, skip it instead.' : 'If an email does not fit any of my topics, do not include it in any topic, skip it instead.'}`
+${config.mustDoOther ? 'Skip the email if it does not contain any action, or if the only action is to review the said email or a material it refers to. If an email does not fit any of my topics, but is actionable and important (for example, payments, fines, taxes, deadlines, meetings), you may still select it and mark the topic as "other". If it is not important enough, do not include it in any topic, skip it instead.' : 'If an email does not fit any of my topics, do not include it in any topic, skip it instead.'}`
     },
     {
       role: 'user',
