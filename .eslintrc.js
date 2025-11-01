@@ -18,7 +18,7 @@ module.exports = {
     '*.config.js'
   ],
   rules: {
-    'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+    'no-unused-vars': 'off',
     'no-console': 'off',
     'no-undef': 'warn',
     'indent': ['warn', 2],
