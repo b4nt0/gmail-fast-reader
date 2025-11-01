@@ -12,10 +12,10 @@ There are three workflows that Gmail Fast Reader supports:
 1. Passive workflow
    
    Gmail Fast Reader would go over the last day emails, find the emails 
-   containing insteresting topics, summarize them, and create a new daily email
-   that contains the summary of the interesting topics of the day.
+   containing insteresting topics, summarize and label them, and create a new 
+   daily email that contains the summary of the interesting topics of the day.
 
-2. Active workflow
+2. Interactive workflow
 
    A semi-interactive mode where the user would activate the Gmail Fast Reader 
    to go over the emails that arrived during the latest X hours or days, 
