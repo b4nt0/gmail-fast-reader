@@ -833,19 +833,6 @@ function removeUninterestingEmailsFromInbox(emailThreads, results, config) {
       if (email.rfc822MessageId) interestingRfc822Ids.add(email.rfc822MessageId);
     });
     
-    // Get inbox label
-    let inboxLabel;
-    try {
-      inboxLabel = GmailApp.getUserLabelByName('INBOX');
-      if (!inboxLabel) {
-        console.warn('Could not get inbox label: INBOX label not found');
-        return;
-      }
-    } catch (error) {
-      console.warn('Could not get inbox label:', error);
-      return;
-    }
-    
     // Check each thread to see if it contains any interesting emails
     for (const threadData of emailThreads || []) {
       try {
@@ -859,16 +846,67 @@ function removeUninterestingEmailsFromInbox(emailThreads, results, config) {
           }
         }
         
-        // If thread has no interesting emails, remove it from inbox
+        // If thread has no interesting emails, check if it's safe to archive
         if (!hasInterestingEmail) {
           try {
             const thread = GmailApp.getThreadById(threadData.threadId);
             if (thread) {
-              console.log(`Removing uninteresting thread ${threadData.threadId} from inbox`);
-              thread.removeLabel(inboxLabel);
+              // Safety checks: only archive if:
+              // 1. Thread is not starred
+              // 2. Thread is not marked as important
+              // 3. Thread has no user labels (only system labels like INBOX)
+              
+              let shouldArchive = true;
+              let reason = [];
+              
+              // Check if starred
+              if (thread.isStarred()) {
+                shouldArchive = false;
+                reason.push('starred');
+              }
+              
+              // Check if has user labels (system labels like INBOX aren't returned by getLabels())
+              const labels = thread.getLabels();
+              if (labels.length > 0) {
+                shouldArchive = false;
+                reason.push(`has ${labels.length} user label(s)`);
+              }
+              
+              // Check if marked as important using Gmail API (if available)
+              try {
+                // Use Gmail Advanced Service API if available to check for IMPORTANT label
+                if (typeof Gmail !== 'undefined') {
+                  const messages = thread.getMessages();
+                  if (messages.length > 0) {
+                    // Check the first message for IMPORTANT label
+                    const messageId = messages[0].getId();
+                    try {
+                      const message = Gmail.Users.Messages.get('me', messageId);
+                      const labelIds = message.labelIds || [];
+                      if (labelIds.includes('IMPORTANT')) {
+                        shouldArchive = false;
+                        reason.push('important');
+                      }
+                    } catch (apiErr) {
+                      // Gmail API might not be enabled or accessible, continue without this check
+                      console.warn(`Could not check IMPORTANT status for thread ${threadData.threadId}:`, apiErr);
+                    }
+                  }
+                }
+              } catch (apiCheckErr) {
+                // Gmail Advanced Service not available, skip important check
+                console.warn(`Gmail Advanced Service not available, skipping IMPORTANT check for thread ${threadData.threadId}`);
+              }
+              
+              if (shouldArchive) {
+                console.log(`Archiving uninteresting thread ${threadData.threadId} from inbox`);
+                thread.moveToArchive();
+              } else {
+                console.log(`Skipping archive for thread ${threadData.threadId}: ${reason.join(', ')}`);
+              }
             }
           } catch (threadErr) {
-            console.warn(`Could not remove thread ${threadData.threadId} from inbox:`, threadErr);
+            console.warn(`Could not process thread ${threadData.threadId} for archiving:`, threadErr);
           }
         }
       } catch (error) {

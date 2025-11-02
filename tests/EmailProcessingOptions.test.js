@@ -92,10 +92,6 @@ describe('Email Processing Options Regression Tests', () => {
     };
 
     // Create mock GmailApp
-    const mockInboxLabel = {
-      getName: () => 'INBOX'
-    };
-
     mockGmailApp = {
       getMessageById: jest.fn((id) => {
         const msg = mockMessages.find(m => m.getId() === id);
@@ -123,12 +119,7 @@ describe('Email Processing Options Regression Tests', () => {
         }
         return [];
       }),
-      getUserLabelByName: jest.fn((name) => {
-        if (name === 'INBOX') {
-          return mockInboxLabel;
-        }
-        return null;
-      }),
+      getUserLabelByName: jest.fn(() => null),
       createLabel: jest.fn((name) => ({ getName: () => name })),
       sendEmail: jest.fn()
     };
@@ -305,8 +296,10 @@ describe('Email Processing Options Regression Tests', () => {
     test('should not remove threads from inbox when option is disabled', () => {
       const mockThread = {
         getId: () => 'thread1',
-        removeLabel: jest.fn(),
-        getMessages: () => []
+        moveToArchive: jest.fn(),
+        getMessages: () => [],
+        isStarred: jest.fn(() => false),
+        getLabels: jest.fn(() => [])
       };
       mockThreads.push(mockThread);
 
@@ -329,20 +322,16 @@ describe('Email Processing Options Regression Tests', () => {
 
       scriptContext.removeUninterestingEmailsFromInbox(emailThreads, results, config);
 
-      expect(mockThread.removeLabel).not.toHaveBeenCalled();
+      expect(mockThread.moveToArchive).not.toHaveBeenCalled();
     });
 
     test('should remove uninteresting threads from inbox when option is enabled', () => {
-      const mockInboxLabel = { getName: () => 'INBOX' };
-      mockGmailApp.getUserLabelByName = jest.fn((name) => {
-        if (name === 'INBOX') return mockInboxLabel;
-        return null;
-      });
-
       const mockThread = {
         getId: () => 'thread1',
-        removeLabel: jest.fn(),
-        getMessages: () => []
+        moveToArchive: jest.fn(),
+        getMessages: () => [],
+        isStarred: jest.fn(() => false),
+        getLabels: jest.fn(() => [])
       };
       mockThreads.push(mockThread);
       mockGmailApp.getThreadById = jest.fn((id) => {
@@ -369,20 +358,16 @@ describe('Email Processing Options Regression Tests', () => {
 
       scriptContext.removeUninterestingEmailsFromInbox(emailThreads, results, config);
 
-      expect(mockThread.removeLabel).toHaveBeenCalledWith(mockInboxLabel);
+      expect(mockThread.moveToArchive).toHaveBeenCalled();
     });
 
     test('should not remove threads with interesting emails', () => {
-      const mockInboxLabel = { getName: () => 'INBOX' };
-      mockGmailApp.getUserLabelByName = jest.fn((name) => {
-        if (name === 'INBOX') return mockInboxLabel;
-        return null;
-      });
-
       const mockThread = {
         getId: () => 'thread1',
-        removeLabel: jest.fn(),
-        getMessages: () => []
+        moveToArchive: jest.fn(),
+        getMessages: () => [],
+        isStarred: jest.fn(() => false),
+        getLabels: jest.fn(() => [])
       };
       mockThreads.push(mockThread);
       mockGmailApp.getThreadById = jest.fn((id) => {
@@ -412,20 +397,16 @@ describe('Email Processing Options Regression Tests', () => {
 
       scriptContext.removeUninterestingEmailsFromInbox(emailThreads, results, config);
 
-      expect(mockThread.removeLabel).not.toHaveBeenCalled();
+      expect(mockThread.moveToArchive).not.toHaveBeenCalled();
     });
 
     test('should handle threads with rfc822MessageId matching', () => {
-      const mockInboxLabel = { getName: () => 'INBOX' };
-      mockGmailApp.getUserLabelByName = jest.fn((name) => {
-        if (name === 'INBOX') return mockInboxLabel;
-        return null;
-      });
-
       const mockThread = {
         getId: () => 'thread1',
-        removeLabel: jest.fn(),
-        getMessages: () => []
+        moveToArchive: jest.fn(),
+        getMessages: () => [],
+        isStarred: jest.fn(() => false),
+        getLabels: jest.fn(() => [])
       };
       mockThreads.push(mockThread);
       mockGmailApp.getThreadById = jest.fn((id) => {
@@ -453,18 +434,372 @@ describe('Email Processing Options Regression Tests', () => {
 
       scriptContext.removeUninterestingEmailsFromInbox(emailThreads, results, config);
 
-      expect(mockThread.removeLabel).toHaveBeenCalledWith(mockInboxLabel);
+      expect(mockThread.moveToArchive).toHaveBeenCalled();
+    });
+
+    test('should not archive starred threads', () => {
+      const mockThread = {
+        getId: () => 'thread1',
+        moveToArchive: jest.fn(),
+        getMessages: () => [],
+        isStarred: jest.fn(() => true),
+        getLabels: jest.fn(() => [])
+      };
+      mockThreads.push(mockThread);
+      mockGmailApp.getThreadById = jest.fn((id) => {
+        if (id === 'thread1') return mockThread;
+        return null;
+      });
+
+      const emailThreads = [{
+        threadId: 'thread1',
+        emails: [{
+          id: 'msg1',
+          subject: 'Uninteresting Email'
+        }]
+      }];
+
+      const results = {
+        mustDo: [],
+        mustKnow: []
+      };
+
+      const config = {
+        removeUninterestingFromInbox: true
+      };
+
+      scriptContext.removeUninterestingEmailsFromInbox(emailThreads, results, config);
+
+      expect(mockThread.moveToArchive).not.toHaveBeenCalled();
+    });
+
+    test('should not archive threads with user labels', () => {
+      const mockLabel = { getName: () => 'TODO' };
+      const mockThread = {
+        getId: () => 'thread1',
+        moveToArchive: jest.fn(),
+        getMessages: () => [],
+        isStarred: jest.fn(() => false),
+        getLabels: jest.fn(() => [mockLabel])
+      };
+      mockThreads.push(mockThread);
+      mockGmailApp.getThreadById = jest.fn((id) => {
+        if (id === 'thread1') return mockThread;
+        return null;
+      });
+
+      const emailThreads = [{
+        threadId: 'thread1',
+        emails: [{
+          id: 'msg1',
+          subject: 'Uninteresting Email'
+        }]
+      }];
+
+      const results = {
+        mustDo: [],
+        mustKnow: []
+      };
+
+      const config = {
+        removeUninterestingFromInbox: true
+      };
+
+      scriptContext.removeUninterestingEmailsFromInbox(emailThreads, results, config);
+
+      expect(mockThread.moveToArchive).not.toHaveBeenCalled();
+    });
+
+    test('should not archive threads marked as important', () => {
+      const mockMessage = {
+        getId: () => 'msg1'
+      };
+      const mockThread = {
+        getId: () => 'thread1',
+        moveToArchive: jest.fn(),
+        getMessages: jest.fn(() => [mockMessage]),
+        isStarred: jest.fn(() => false),
+        getLabels: jest.fn(() => [])
+      };
+      mockThreads.push(mockThread);
+      mockGmailApp.getThreadById = jest.fn((id) => {
+        if (id === 'thread1') return mockThread;
+        return null;
+      });
+
+      // Mock Gmail Advanced Service API
+      const mockGmailApi = {
+        Users: {
+          Messages: {
+            get: jest.fn(() => ({
+              labelIds: ['IMPORTANT']
+            }))
+          }
+        }
+      };
+      scriptContext.Gmail = mockGmailApi;
+
+      const emailThreads = [{
+        threadId: 'thread1',
+        emails: [{
+          id: 'msg1',
+          subject: 'Uninteresting Email'
+        }]
+      }];
+
+      const results = {
+        mustDo: [],
+        mustKnow: []
+      };
+
+      const config = {
+        removeUninterestingFromInbox: true
+      };
+
+      scriptContext.removeUninterestingEmailsFromInbox(emailThreads, results, config);
+
+      expect(mockThread.moveToArchive).not.toHaveBeenCalled();
+      expect(mockGmailApi.Users.Messages.get).toHaveBeenCalledWith('me', 'msg1');
+    });
+  });
+
+  describe('Regression tests: Safety checks for archiving', () => {
+    beforeEach(() => {
+      // Mock Gmail API as unavailable by default
+      scriptContext.Gmail = undefined;
+    });
+
+    test('should NOT archive thread that is starred', () => {
+      const mockThread = {
+        getId: () => 'thread1',
+        moveToArchive: jest.fn(),
+        getMessages: () => [],
+        isStarred: jest.fn(() => true),
+        getLabels: jest.fn(() => [])
+      };
+      mockGmailApp.getThreadById = jest.fn(() => mockThread);
+
+      const emailThreads = [{
+        threadId: 'thread1',
+        emails: [{ id: 'msg1', subject: 'Test' }]
+      }];
+
+      scriptContext.removeUninterestingEmailsFromInbox(emailThreads, { mustDo: [], mustKnow: [] }, {
+        removeUninterestingFromInbox: true
+      });
+
+      expect(mockThread.isStarred).toHaveBeenCalled();
+      expect(mockThread.moveToArchive).not.toHaveBeenCalled();
+    });
+
+    test('should NOT archive thread that has user labels', () => {
+      const mockLabel = { getName: () => 'TODO' };
+      const mockThread = {
+        getId: () => 'thread1',
+        moveToArchive: jest.fn(),
+        getMessages: () => [],
+        isStarred: jest.fn(() => false),
+        getLabels: jest.fn(() => [mockLabel])
+      };
+      mockGmailApp.getThreadById = jest.fn(() => mockThread);
+
+      const emailThreads = [{
+        threadId: 'thread1',
+        emails: [{ id: 'msg1', subject: 'Test' }]
+      }];
+
+      scriptContext.removeUninterestingEmailsFromInbox(emailThreads, { mustDo: [], mustKnow: [] }, {
+        removeUninterestingFromInbox: true
+      });
+
+      expect(mockThread.getLabels).toHaveBeenCalled();
+      expect(mockThread.moveToArchive).not.toHaveBeenCalled();
+    });
+
+    test('should NOT archive thread marked as important (when Gmail API available)', () => {
+      const mockMessage = { getId: () => 'msg1' };
+      const mockThread = {
+        getId: () => 'thread1',
+        moveToArchive: jest.fn(),
+        getMessages: jest.fn(() => [mockMessage]),
+        isStarred: jest.fn(() => false),
+        getLabels: jest.fn(() => [])
+      };
+      mockGmailApp.getThreadById = jest.fn(() => mockThread);
+
+      const mockGmailApi = {
+        Users: {
+          Messages: {
+            get: jest.fn(() => ({ labelIds: ['IMPORTANT'] }))
+          }
+        }
+      };
+      scriptContext.Gmail = mockGmailApi;
+
+      const emailThreads = [{
+        threadId: 'thread1',
+        emails: [{ id: 'msg1', subject: 'Test' }]
+      }];
+
+      scriptContext.removeUninterestingEmailsFromInbox(emailThreads, { mustDo: [], mustKnow: [] }, {
+        removeUninterestingFromInbox: true
+      });
+
+      expect(mockGmailApi.Users.Messages.get).toHaveBeenCalledWith('me', 'msg1');
+      expect(mockThread.moveToArchive).not.toHaveBeenCalled();
+    });
+
+    test('should NOT archive thread that is both starred AND has labels', () => {
+      const mockLabel = { getName: () => 'FYI' };
+      const mockThread = {
+        getId: () => 'thread1',
+        moveToArchive: jest.fn(),
+        getMessages: () => [],
+        isStarred: jest.fn(() => true),
+        getLabels: jest.fn(() => [mockLabel])
+      };
+      mockGmailApp.getThreadById = jest.fn(() => mockThread);
+
+      const emailThreads = [{
+        threadId: 'thread1',
+        emails: [{ id: 'msg1', subject: 'Test' }]
+      }];
+
+      scriptContext.removeUninterestingEmailsFromInbox(emailThreads, { mustDo: [], mustKnow: [] }, {
+        removeUninterestingFromInbox: true
+      });
+
+      expect(mockThread.isStarred).toHaveBeenCalled();
+      expect(mockThread.getLabels).toHaveBeenCalled();
+      expect(mockThread.moveToArchive).not.toHaveBeenCalled();
+    });
+
+    test('should NOT archive thread that has ALL safety flags (starred, labeled, important)', () => {
+      const mockMessage = { getId: () => 'msg1' };
+      const mockLabel = { getName: () => 'TODO' };
+      const mockThread = {
+        getId: () => 'thread1',
+        moveToArchive: jest.fn(),
+        getMessages: jest.fn(() => [mockMessage]),
+        isStarred: jest.fn(() => true),
+        getLabels: jest.fn(() => [mockLabel])
+      };
+      mockGmailApp.getThreadById = jest.fn(() => mockThread);
+
+      const mockGmailApi = {
+        Users: {
+          Messages: {
+            get: jest.fn(() => ({ labelIds: ['IMPORTANT'] }))
+          }
+        }
+      };
+      scriptContext.Gmail = mockGmailApi;
+
+      const emailThreads = [{
+        threadId: 'thread1',
+        emails: [{ id: 'msg1', subject: 'Test' }]
+      }];
+
+      scriptContext.removeUninterestingEmailsFromInbox(emailThreads, { mustDo: [], mustKnow: [] }, {
+        removeUninterestingFromInbox: true
+      });
+
+      expect(mockThread.isStarred).toHaveBeenCalled();
+      expect(mockThread.getLabels).toHaveBeenCalled();
+      expect(mockThread.moveToArchive).not.toHaveBeenCalled();
+    });
+
+    test('should archive thread that passes ALL safety checks (not starred, no labels, not important)', () => {
+      const mockMessage = { getId: () => 'msg1' };
+      const mockThread = {
+        getId: () => 'thread1',
+        moveToArchive: jest.fn(),
+        getMessages: jest.fn(() => [mockMessage]),
+        isStarred: jest.fn(() => false),
+        getLabels: jest.fn(() => [])
+      };
+      mockGmailApp.getThreadById = jest.fn(() => mockThread);
+
+      const mockGmailApi = {
+        Users: {
+          Messages: {
+            get: jest.fn(() => ({ labelIds: [] })) // No IMPORTANT label
+          }
+        }
+      };
+      scriptContext.Gmail = mockGmailApi;
+
+      const emailThreads = [{
+        threadId: 'thread1',
+        emails: [{ id: 'msg1', subject: 'Test' }]
+      }];
+
+      scriptContext.removeUninterestingEmailsFromInbox(emailThreads, { mustDo: [], mustKnow: [] }, {
+        removeUninterestingFromInbox: true
+      });
+
+      expect(mockThread.isStarred).toHaveBeenCalled();
+      expect(mockThread.getLabels).toHaveBeenCalled();
+      expect(mockGmailApi.Users.Messages.get).toHaveBeenCalledWith('me', 'msg1');
+      expect(mockThread.moveToArchive).toHaveBeenCalled();
+    });
+
+    test('should archive thread when Gmail API is unavailable (graceful fallback)', () => {
+      const mockThread = {
+        getId: () => 'thread1',
+        moveToArchive: jest.fn(),
+        getMessages: () => [],
+        isStarred: jest.fn(() => false),
+        getLabels: jest.fn(() => [])
+      };
+      mockGmailApp.getThreadById = jest.fn(() => mockThread);
+
+      // Gmail API not available
+      scriptContext.Gmail = undefined;
+
+      const emailThreads = [{
+        threadId: 'thread1',
+        emails: [{ id: 'msg1', subject: 'Test' }]
+      }];
+
+      scriptContext.removeUninterestingEmailsFromInbox(emailThreads, { mustDo: [], mustKnow: [] }, {
+        removeUninterestingFromInbox: true
+      });
+
+      expect(mockThread.isStarred).toHaveBeenCalled();
+      expect(mockThread.getLabels).toHaveBeenCalled();
+      // Should still archive even without Gmail API (graceful fallback)
+      expect(mockThread.moveToArchive).toHaveBeenCalled();
+    });
+
+    test('should NOT archive thread with multiple user labels', () => {
+      const mockLabel1 = { getName: () => 'TODO' };
+      const mockLabel2 = { getName: () => 'FYI' };
+      const mockThread = {
+        getId: () => 'thread1',
+        moveToArchive: jest.fn(),
+        getMessages: () => [],
+        isStarred: jest.fn(() => false),
+        getLabels: jest.fn(() => [mockLabel1, mockLabel2])
+      };
+      mockGmailApp.getThreadById = jest.fn(() => mockThread);
+
+      const emailThreads = [{
+        threadId: 'thread1',
+        emails: [{ id: 'msg1', subject: 'Test' }]
+      }];
+
+      scriptContext.removeUninterestingEmailsFromInbox(emailThreads, { mustDo: [], mustKnow: [] }, {
+        removeUninterestingFromInbox: true
+      });
+
+      expect(mockThread.getLabels).toHaveBeenCalled();
+      expect(mockThread.moveToArchive).not.toHaveBeenCalled();
     });
   });
 
   describe('Integration tests', () => {
     test('both options work together correctly', () => {
-      const mockInboxLabel = { getName: () => 'INBOX' };
-      mockGmailApp.getUserLabelByName = jest.fn((name) => {
-        if (name === 'INBOX') return mockInboxLabel;
-        return null;
-      });
-
       const mockMessage1 = {
         getId: () => 'msg1',
         markRead: jest.fn(),
@@ -479,13 +814,17 @@ describe('Email Processing Options Regression Tests', () => {
 
       const mockThread1 = {
         getId: () => 'thread1',
-        removeLabel: jest.fn(),
-        getMessages: () => []
+        moveToArchive: jest.fn(),
+        getMessages: () => [],
+        isStarred: jest.fn(() => false),
+        getLabels: jest.fn(() => [])
       };
       const mockThread2 = {
         getId: () => 'thread2',
-        removeLabel: jest.fn(),
-        getMessages: () => []
+        moveToArchive: jest.fn(),
+        getMessages: () => [],
+        isStarred: jest.fn(() => false),
+        getLabels: jest.fn(() => [])
       };
       mockThreads.push(mockThread1, mockThread2);
       mockGmailApp.getThreadById = jest.fn((id) => {
@@ -533,8 +872,8 @@ describe('Email Processing Options Regression Tests', () => {
 
       // Test removeUninterestingEmailsFromInbox
       scriptContext.removeUninterestingEmailsFromInbox(emailThreads, results, config);
-      expect(mockThread1.removeLabel).not.toHaveBeenCalled(); // Has interesting email
-      expect(mockThread2.removeLabel).toHaveBeenCalledWith(mockInboxLabel); // Uninteresting
+      expect(mockThread1.moveToArchive).not.toHaveBeenCalled(); // Has interesting email
+      expect(mockThread2.moveToArchive).toHaveBeenCalled(); // Uninteresting
     });
   });
 });
