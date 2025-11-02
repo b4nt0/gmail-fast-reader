@@ -523,7 +523,7 @@ For each email thread, determine:
 
 IMPORTANT: Not every email must make it to the output. Skipping emails is okay and even desired when they don't match any topic. Only include emails that are truly relevant to the user's specified topics.
 
-For "I must do" category a clear action must be identified. That action must be more than simply review or take note of the said email or a material it refers to, otherwise skip it.
+For "I must do" category a clear action must be identified. A valid action must be more than simply review or take note of the said email, click a link in the email, or review a material it refers to.
 
 Examples of valid actions for "I must do" category:
 - Meet someone
@@ -535,8 +535,11 @@ Examples of valid actions for "I must do" category:
 Examples of invalid actions for "I must do" category (if there are no other actions, skip the email):
 - Review an email
 - Take note of an email
+- Click a link in the email
 - Review the attachment to the email
 - Log a payment that has already been made
+
+If there are no valid actions, do not include the email in the "I must do" category.
 
 MANDATE: You MUST respond with valid JSON in exactly this structure:
 {
@@ -570,7 +573,7 @@ MANDATE: You MUST respond with valid JSON in exactly this structure:
       content: `MY "I MUST DO" TOPICS:
 ${mustDoTopicsList}
 
-${config.mustDoOther ? 'Skip the email if it does not contain any action. If an email does not fit any of my topics, but is actionable and important (for example, payments, fines, taxes, deadlines, meetings), you may still select it and mark the topic as "other". If it is not important enough, do not include it in any topic, skip it instead.' : 'If an email does not fit any of my topics, do not include it in any topic, skip it instead.'}`
+${config.mustDoOther ? 'Skip the email if it does not contain any valid action. If an email does not fit any of my topics, but is actionable and important (for example, payments, fines, taxes, deadlines, meetings), you may still select it and mark the topic as "other". If it is not important enough, do not include it in any topic, skip it instead.' : 'If an email does not fit any of my topics or does not contain any valid action, do not include it in any topic, skip it instead.'}`
     },
     {
       role: 'user',
