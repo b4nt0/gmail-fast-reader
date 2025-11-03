@@ -294,11 +294,14 @@ describe('Email Processing Options Regression Tests', () => {
 
   describe('removeUninterestingEmailsFromInbox function', () => {
     test('should not remove threads from inbox when option is disabled', () => {
+      const mockMessage = {
+        getId: () => 'msg1',
+        isStarred: jest.fn(() => false)
+      };
       const mockThread = {
         getId: () => 'thread1',
         moveToArchive: jest.fn(),
-        getMessages: () => [],
-        isStarred: jest.fn(() => false),
+        getMessages: jest.fn(() => [mockMessage]),
         getLabels: jest.fn(() => [])
       };
       mockThreads.push(mockThread);
@@ -326,11 +329,14 @@ describe('Email Processing Options Regression Tests', () => {
     });
 
     test('should remove uninteresting threads from inbox when option is enabled', () => {
+      const mockMessage = {
+        getId: () => 'msg1',
+        isStarred: jest.fn(() => false)
+      };
       const mockThread = {
         getId: () => 'thread1',
         moveToArchive: jest.fn(),
-        getMessages: () => [],
-        isStarred: jest.fn(() => false),
+        getMessages: jest.fn(() => [mockMessage]),
         getLabels: jest.fn(() => [])
       };
       mockThreads.push(mockThread);
@@ -362,11 +368,14 @@ describe('Email Processing Options Regression Tests', () => {
     });
 
     test('should not remove threads with interesting emails', () => {
+      const mockMessage = {
+        getId: () => 'msg1',
+        isStarred: jest.fn(() => false)
+      };
       const mockThread = {
         getId: () => 'thread1',
         moveToArchive: jest.fn(),
-        getMessages: () => [],
-        isStarred: jest.fn(() => false),
+        getMessages: jest.fn(() => [mockMessage]),
         getLabels: jest.fn(() => [])
       };
       mockThreads.push(mockThread);
@@ -401,11 +410,14 @@ describe('Email Processing Options Regression Tests', () => {
     });
 
     test('should handle threads with rfc822MessageId matching', () => {
+      const mockMessage = {
+        getId: () => 'msg1',
+        isStarred: jest.fn(() => false)
+      };
       const mockThread = {
         getId: () => 'thread1',
         moveToArchive: jest.fn(),
-        getMessages: () => [],
-        isStarred: jest.fn(() => false),
+        getMessages: jest.fn(() => [mockMessage]),
         getLabels: jest.fn(() => [])
       };
       mockThreads.push(mockThread);
@@ -438,11 +450,14 @@ describe('Email Processing Options Regression Tests', () => {
     });
 
     test('should not archive starred threads', () => {
+      const mockMessage = {
+        getId: () => 'msg1',
+        isStarred: jest.fn(() => true)
+      };
       const mockThread = {
         getId: () => 'thread1',
         moveToArchive: jest.fn(),
-        getMessages: () => [],
-        isStarred: jest.fn(() => true),
+        getMessages: jest.fn(() => [mockMessage]),
         getLabels: jest.fn(() => [])
       };
       mockThreads.push(mockThread);
@@ -475,11 +490,14 @@ describe('Email Processing Options Regression Tests', () => {
 
     test('should not archive threads with user labels', () => {
       const mockLabel = { getName: () => 'TODO' };
+      const mockMessage = {
+        getId: () => 'msg1',
+        isStarred: jest.fn(() => false)
+      };
       const mockThread = {
         getId: () => 'thread1',
         moveToArchive: jest.fn(),
-        getMessages: () => [],
-        isStarred: jest.fn(() => false),
+        getMessages: jest.fn(() => [mockMessage]),
         getLabels: jest.fn(() => [mockLabel])
       };
       mockThreads.push(mockThread);
@@ -512,13 +530,13 @@ describe('Email Processing Options Regression Tests', () => {
 
     test('should not archive threads marked as important', () => {
       const mockMessage = {
-        getId: () => 'msg1'
+        getId: () => 'msg1',
+        isStarred: jest.fn(() => false)
       };
       const mockThread = {
         getId: () => 'thread1',
         moveToArchive: jest.fn(),
         getMessages: jest.fn(() => [mockMessage]),
-        isStarred: jest.fn(() => false),
         getLabels: jest.fn(() => [])
       };
       mockThreads.push(mockThread);
@@ -570,11 +588,14 @@ describe('Email Processing Options Regression Tests', () => {
     });
 
     test('should NOT archive thread that is starred', () => {
+      const mockMessage = {
+        getId: () => 'msg1',
+        isStarred: jest.fn(() => true)
+      };
       const mockThread = {
         getId: () => 'thread1',
         moveToArchive: jest.fn(),
-        getMessages: () => [],
-        isStarred: jest.fn(() => true),
+        getMessages: jest.fn(() => [mockMessage]),
         getLabels: jest.fn(() => [])
       };
       mockGmailApp.getThreadById = jest.fn(() => mockThread);
@@ -588,17 +609,20 @@ describe('Email Processing Options Regression Tests', () => {
         removeUninterestingFromInbox: true
       });
 
-      expect(mockThread.isStarred).toHaveBeenCalled();
+      expect(mockMessage.isStarred).toHaveBeenCalled();
       expect(mockThread.moveToArchive).not.toHaveBeenCalled();
     });
 
     test('should NOT archive thread that has user labels', () => {
       const mockLabel = { getName: () => 'TODO' };
+      const mockMessage = {
+        getId: () => 'msg1',
+        isStarred: jest.fn(() => false)
+      };
       const mockThread = {
         getId: () => 'thread1',
         moveToArchive: jest.fn(),
-        getMessages: () => [],
-        isStarred: jest.fn(() => false),
+        getMessages: jest.fn(() => [mockMessage]),
         getLabels: jest.fn(() => [mockLabel])
       };
       mockGmailApp.getThreadById = jest.fn(() => mockThread);
@@ -617,12 +641,14 @@ describe('Email Processing Options Regression Tests', () => {
     });
 
     test('should NOT archive thread marked as important (when Gmail API available)', () => {
-      const mockMessage = { getId: () => 'msg1' };
+      const mockMessage = {
+        getId: () => 'msg1',
+        isStarred: jest.fn(() => false)
+      };
       const mockThread = {
         getId: () => 'thread1',
         moveToArchive: jest.fn(),
         getMessages: jest.fn(() => [mockMessage]),
-        isStarred: jest.fn(() => false),
         getLabels: jest.fn(() => [])
       };
       mockGmailApp.getThreadById = jest.fn(() => mockThread);
@@ -651,11 +677,14 @@ describe('Email Processing Options Regression Tests', () => {
 
     test('should NOT archive thread that is both starred AND has labels', () => {
       const mockLabel = { getName: () => 'FYI' };
+      const mockMessage = {
+        getId: () => 'msg1',
+        isStarred: jest.fn(() => true)
+      };
       const mockThread = {
         getId: () => 'thread1',
         moveToArchive: jest.fn(),
-        getMessages: () => [],
-        isStarred: jest.fn(() => true),
+        getMessages: jest.fn(() => [mockMessage]),
         getLabels: jest.fn(() => [mockLabel])
       };
       mockGmailApp.getThreadById = jest.fn(() => mockThread);
@@ -669,19 +698,21 @@ describe('Email Processing Options Regression Tests', () => {
         removeUninterestingFromInbox: true
       });
 
-      expect(mockThread.isStarred).toHaveBeenCalled();
+      expect(mockMessage.isStarred).toHaveBeenCalled();
       expect(mockThread.getLabels).toHaveBeenCalled();
       expect(mockThread.moveToArchive).not.toHaveBeenCalled();
     });
 
     test('should NOT archive thread that has ALL safety flags (starred, labeled, important)', () => {
-      const mockMessage = { getId: () => 'msg1' };
+      const mockMessage = {
+        getId: () => 'msg1',
+        isStarred: jest.fn(() => true)
+      };
       const mockLabel = { getName: () => 'TODO' };
       const mockThread = {
         getId: () => 'thread1',
         moveToArchive: jest.fn(),
         getMessages: jest.fn(() => [mockMessage]),
-        isStarred: jest.fn(() => true),
         getLabels: jest.fn(() => [mockLabel])
       };
       mockGmailApp.getThreadById = jest.fn(() => mockThread);
@@ -704,18 +735,20 @@ describe('Email Processing Options Regression Tests', () => {
         removeUninterestingFromInbox: true
       });
 
-      expect(mockThread.isStarred).toHaveBeenCalled();
+      expect(mockMessage.isStarred).toHaveBeenCalled();
       expect(mockThread.getLabels).toHaveBeenCalled();
       expect(mockThread.moveToArchive).not.toHaveBeenCalled();
     });
 
     test('should archive thread that passes ALL safety checks (not starred, no labels, not important)', () => {
-      const mockMessage = { getId: () => 'msg1' };
+      const mockMessage = {
+        getId: () => 'msg1',
+        isStarred: jest.fn(() => false)
+      };
       const mockThread = {
         getId: () => 'thread1',
         moveToArchive: jest.fn(),
         getMessages: jest.fn(() => [mockMessage]),
-        isStarred: jest.fn(() => false),
         getLabels: jest.fn(() => [])
       };
       mockGmailApp.getThreadById = jest.fn(() => mockThread);
@@ -738,18 +771,21 @@ describe('Email Processing Options Regression Tests', () => {
         removeUninterestingFromInbox: true
       });
 
-      expect(mockThread.isStarred).toHaveBeenCalled();
+      expect(mockMessage.isStarred).toHaveBeenCalled();
       expect(mockThread.getLabels).toHaveBeenCalled();
       expect(mockGmailApi.Users.Messages.get).toHaveBeenCalledWith('me', 'msg1');
       expect(mockThread.moveToArchive).toHaveBeenCalled();
     });
 
     test('should archive thread when Gmail API is unavailable (graceful fallback)', () => {
+      const mockMessage = {
+        getId: () => 'msg1',
+        isStarred: jest.fn(() => false)
+      };
       const mockThread = {
         getId: () => 'thread1',
         moveToArchive: jest.fn(),
-        getMessages: () => [],
-        isStarred: jest.fn(() => false),
+        getMessages: jest.fn(() => [mockMessage]),
         getLabels: jest.fn(() => [])
       };
       mockGmailApp.getThreadById = jest.fn(() => mockThread);
@@ -766,7 +802,7 @@ describe('Email Processing Options Regression Tests', () => {
         removeUninterestingFromInbox: true
       });
 
-      expect(mockThread.isStarred).toHaveBeenCalled();
+      expect(mockMessage.isStarred).toHaveBeenCalled();
       expect(mockThread.getLabels).toHaveBeenCalled();
       // Should still archive even without Gmail API (graceful fallback)
       expect(mockThread.moveToArchive).toHaveBeenCalled();
@@ -775,11 +811,14 @@ describe('Email Processing Options Regression Tests', () => {
     test('should NOT archive thread with multiple user labels', () => {
       const mockLabel1 = { getName: () => 'TODO' };
       const mockLabel2 = { getName: () => 'FYI' };
+      const mockMessage = {
+        getId: () => 'msg1',
+        isStarred: jest.fn(() => false)
+      };
       const mockThread = {
         getId: () => 'thread1',
         moveToArchive: jest.fn(),
-        getMessages: () => [],
-        isStarred: jest.fn(() => false),
+        getMessages: jest.fn(() => [mockMessage]),
         getLabels: jest.fn(() => [mockLabel1, mockLabel2])
       };
       mockGmailApp.getThreadById = jest.fn(() => mockThread);
@@ -812,18 +851,24 @@ describe('Email Processing Options Regression Tests', () => {
       };
       mockMessages.push(mockMessage1, mockMessage2);
 
+      const mockThreadMessage1 = {
+        getId: () => 'msg1',
+        isStarred: jest.fn(() => false)
+      };
+      const mockThreadMessage2 = {
+        getId: () => 'msg2',
+        isStarred: jest.fn(() => false)
+      };
       const mockThread1 = {
         getId: () => 'thread1',
         moveToArchive: jest.fn(),
-        getMessages: () => [],
-        isStarred: jest.fn(() => false),
+        getMessages: jest.fn(() => [mockThreadMessage1]),
         getLabels: jest.fn(() => [])
       };
       const mockThread2 = {
         getId: () => 'thread2',
         moveToArchive: jest.fn(),
-        getMessages: () => [],
-        isStarred: jest.fn(() => false),
+        getMessages: jest.fn(() => [mockThreadMessage2]),
         getLabels: jest.fn(() => [])
       };
       mockThreads.push(mockThread1, mockThread2);

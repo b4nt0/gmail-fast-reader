@@ -862,8 +862,16 @@ function removeUninterestingEmailsFromInbox(emailThreads, results, config) {
               let shouldArchive = true;
               let reason = [];
               
-              // Check if starred
-              if (thread.isStarred()) {
+              // Check if starred (check messages in thread since GmailThread doesn't have isStarred())
+              const messages = thread.getMessages();
+              let isStarred = false;
+              for (const message of messages) {
+                if (message.isStarred()) {
+                  isStarred = true;
+                  break;
+                }
+              }
+              if (isStarred) {
                 shouldArchive = false;
                 reason.push('starred');
               }
@@ -879,7 +887,6 @@ function removeUninterestingEmailsFromInbox(emailThreads, results, config) {
               try {
                 // Use Gmail Advanced Service API if available to check for IMPORTANT label
                 if (typeof Gmail !== 'undefined') {
-                  const messages = thread.getMessages();
                   if (messages.length > 0) {
                     // Check the first message for IMPORTANT label
                     const messageId = messages[0].getId();
