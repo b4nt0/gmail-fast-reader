@@ -862,6 +862,10 @@ function handleOnboardingFinish(e) {
  * Handle nuke settings (debug function)
  */
 function handleNukeSettings() {
+  if (!debugMode()) {
+    return buildErrorCard('This function is only available in debug mode');
+  }
+  
   try {
     const properties = PropertiesService.getUserProperties();
     
@@ -883,6 +887,104 @@ function handleNukeSettings() {
     return buildOnboardingCard(1);
   } catch (error) {
     return buildErrorCard('Failed to nuke settings: ' + error.message);
+  }
+}
+
+/**
+ * Handle debug store dummy content (debug function)
+ */
+function handleDebugStoreDummyContent() {
+  if (!debugMode()) {
+    return buildErrorCard('This function is only available in debug mode');
+  }
+  
+  try {
+    const result = debugStoreDummyContent();
+    
+    const message = '✅ Dummy content stored successfully!\n\n' +
+      `Stored: ${result.stored.mustDo} mustDo, ${result.stored.mustKnow} mustKnow, ${result.stored.totalProcessed} total\n` +
+      `Verified: ${result.verified.mustDo} mustDo, ${result.verified.mustKnow} mustKnow, ${result.verified.totalProcessed} total`;
+    
+    return buildConfigSuccessCard(message);
+  } catch (error) {
+    return buildErrorCard('Failed to store dummy content: ' + error.message);
+  }
+}
+
+/**
+ * Handle debug test Drive API with getBytes() approach
+ */
+function handleDebugTestDriveAPIWithGetBytes() {
+  if (!debugMode()) {
+    return buildErrorCard('This function is only available in debug mode');
+  }
+  
+  try {
+    const result = debugTestDriveAPIWithGetBytes();
+    
+    if (!result.success) {
+      let errorMessage = `❌ ${result.message}\n\n`;
+      if (result.error) {
+        errorMessage += `Error: ${result.error}\n\n`;
+      }
+      if (result.save && result.save.success === false) {
+        errorMessage += 'Save failed\n';
+      }
+      if (result.load && result.load.success === false) {
+        errorMessage += 'Load failed\n';
+      }
+      
+      // Add diagnostic information about the response
+      if (result.load && result.load.responseInfo) {
+        const info = result.load.responseInfo;
+        errorMessage += '\n📊 Response Diagnostics:\n';
+        errorMessage += `   Type: ${info.type}\n`;
+        errorMessage += `   Constructor: ${info.constructor}\n`;
+        errorMessage += `   Has getDataAsString: ${info.hasGetDataAsString}\n`;
+        errorMessage += `   Has getBytes: ${info.hasGetBytes}\n`;
+        errorMessage += `   Is String: ${info.isString}\n`;
+        errorMessage += `   Keys: ${info.keys}\n`;
+      }
+      
+      return buildErrorCard(errorMessage);
+    }
+    
+    // Build detailed success message
+    let message = `✅ ${result.message}\n\n`;
+    
+    // Save results
+    message += '📝 Save Operation:\n';
+    message += `   Action: ${result.save.action}\n`;
+    message += `   File ID: ${result.save.fileId}\n`;
+    message += `   Size: ${result.save.size} bytes\n\n`;
+    
+    // Load results
+    message += '📖 Load Operation:\n';
+    message += `   Method: ${result.load.method}\n`;
+    message += `   Size: ${result.load.size} bytes\n\n`;
+    
+    // Comparison results
+    message += '🔍 Comparison:\n';
+    message += `   Sizes match: ${result.comparison.sizesMatch ? '✅' : '❌'}\n`;
+    message += `   Data matches: ${result.comparison.dataMatches ? '✅' : '❌'}\n`;
+    
+    if (!result.comparison.dataMatches) {
+      message += '\n⚠️ Data mismatch detected!\n';
+      if (result.comparison.differences) {
+        message += `Original (first 200 chars):\n${result.comparison.differences.original}\n\n`;
+        message += `Loaded (first 200 chars):\n${result.comparison.differences.loaded}\n`;
+      }
+    }
+    
+    // Show sample of random data
+    message += '\n\n📊 Test Data Sample:\n';
+    message += `   Random String: ${result.originalData.randomString.substring(0, 20)}...\n`;
+    message += `   Random Number: ${result.originalData.randomNumber}\n`;
+    message += `   Timestamp: ${result.originalData.timestamp}\n`;
+    
+    return buildConfigSuccessCard(message);
+  } catch (error) {
+    return buildErrorCard('Failed to test Drive API: ' + error.message);
   }
 }
 
@@ -1147,10 +1249,35 @@ function finalizeChunkedProcessing(accumulated) {
       actualEndDate: actualEndDate.toISOString()
     };
 
+    // Collect stats before cleanup
+    const startTimeStr = properties.getProperty('processingStartTime');
+    const processedThreads = parseInt(properties.getProperty('processedThreads') || '0');
+    const totalThreads = parseInt(properties.getProperty('totalThreads') || '0');
+    const processedMessages = parseInt(properties.getProperty('processedMessages') || '0');
+    const totalMessages = parseInt(properties.getProperty('totalMessages') || '0');
+    
+    // Calculate duration
+    let duration = 0;
+    if (startTimeStr) {
+      const startTime = new Date(startTimeStr);
+      const endTime = new Date();
+      duration = endTime.getTime() - startTime.getTime();
+    }
+
     properties.setProperties({
       'processingStatus': PROCESSING_STATUS.COMPLETED,
       'processingMessage': `Processing complete. Found ${mustDo.length} actionable items and ${mustKnow.length} informational items.`,
       'processingResults': JSON.stringify(finalResults)
+    });
+
+    // Save latest run stats immediately (before cleanup)
+    saveLatestRunStats(properties, PROCESSING_STATUS.COMPLETED, 'Processing completed successfully', {
+      results: finalResults,
+      duration: duration,
+      processedThreads: processedThreads,
+      totalThreads: totalThreads,
+      processedMessages: processedMessages,
+      totalMessages: totalMessages
     });
 
     // Clear chunked-specific state

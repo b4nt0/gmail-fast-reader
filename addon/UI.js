@@ -436,16 +436,23 @@ function buildConfigurationCard() {
             .setFunctionName('buildActiveWorkflowCard'))
           .setDisabled(isRunning))));
     
-  // Add debug button only for debug user
-  const userEmail = getUserEmailAddress();
-  if (userEmail === DEBUG_USER_EMAIL) {
+  // Add debug buttons only for debug user
+  if (debugMode()) {
     card.addSection(CardService.newCardSection()
       .setHeader('Debug')
       .addWidget(CardService.newButtonSet()
         .addButton(CardService.newTextButton()
           .setText('🗑️ Nuke All Settings')
           .setOnClickAction(CardService.newAction()
-            .setFunctionName('handleNukeSettings')))));
+            .setFunctionName('handleNukeSettings')))
+        .addButton(CardService.newTextButton()
+          .setText('🧪 Test File Storage')
+          .setOnClickAction(CardService.newAction()
+            .setFunctionName('handleDebugStoreDummyContent')))
+        .addButton(CardService.newTextButton()
+          .setText('🔬 Test Drive API (getBytes)')
+          .setOnClickAction(CardService.newAction()
+            .setFunctionName('handleDebugTestDriveAPIWithGetBytes')))));
   }
     
   return card.build();

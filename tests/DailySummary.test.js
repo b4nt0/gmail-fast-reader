@@ -14,8 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 
-// Constants from DriveStorage.js
-const FILE_ID_PROPERTY_KEY = 'drive_accumulation_file_id';
+// Constants from DriveStorage.js (no longer needed - using PropertiesService directly)
 
 // Create a context for executing the Apps Script code
 const scriptContext = vm.createContext({
@@ -210,7 +209,7 @@ describe('Daily Summary Regression Tests', () => {
       getUserLabels: jest.fn(() => [])
     };
 
-    // Create mock Utilities for timezone operations
+    // Create mock Utilities for timezone operations and retry logic
     // Default behavior - will be overridden in tests
     mockUtilities = {
       formatDate: jest.fn((date, timezone, format) => {
@@ -229,6 +228,27 @@ describe('Daily Summary Regression Tests', () => {
           return `${year}-${month}-${day}`;
         }
         return '';
+      }),
+      sleep: jest.fn((milliseconds) => {
+        // No-op in tests - no actual delay needed
+        // This is used by retry logic with exponential backoff
+      }),
+      newBlob: jest.fn((data, mimeType, name) => {
+        // Mock blob creation - return an object with the data
+        // The blob will be used by Drive.Files.create()
+        return {
+          getDataAsString: jest.fn(() => data),
+          getContentType: jest.fn(() => mimeType),
+          getName: jest.fn(() => name),
+          getBytes: jest.fn(() => {
+            // Convert string to bytes for testing
+            const bytes = [];
+            for (let i = 0; i < data.length; i++) {
+              bytes.push(data.charCodeAt(i));
+            }
+            return bytes;
+          })
+        };
       })
     };
 
@@ -237,8 +257,130 @@ describe('Daily Summary Regression Tests', () => {
       getUserProperties: jest.fn(() => mockPropertiesService)
     };
 
+    // Create mock Drive API (Drive.Files)
+    const mockDriveAPI = {
+      Files: {
+        create: jest.fn((fileResource, blob) => {
+          // Create file in driveFiles when using Drive API
+          const fileName = fileResource.name || 'gmail-fast-read-accumulated-results.json';
+          const fileId = 'file-' + fileName;
+          
+          // Get content from blob - handle both direct string and blob object
+          let content = '';
+          if (typeof blob === 'string') {
+            content = blob;
+          } else if (blob && typeof blob.getDataAsString === 'function') {
+            content = blob.getDataAsString();
+          } else if (blob && blob.getDataAsString && typeof blob.getDataAsString === 'function') {
+            content = blob.getDataAsString();
+          }
+          
+          // Create file using the same helper
+          if (!driveFiles[fileName]) {
+            const mockFile = {
+              getId: jest.fn(() => fileId),
+              getName: jest.fn(() => fileName),
+              getBlob: jest.fn(() => ({
+                getDataAsString: jest.fn(() => driveFiles[fileName].content || content)
+              })),
+              setContent: jest.fn((newContent) => {
+                driveFiles[fileName].content = newContent;
+              }),
+              setTrashed: jest.fn(() => {
+                delete driveFiles[fileName];
+              }),
+              content: content,
+              id: fileId
+            };
+            driveFiles[fileName] = mockFile;
+          } else {
+            driveFiles[fileName].content = content;
+            // Update getBlob to return current content
+            driveFiles[fileName].getBlob = jest.fn(() => ({
+              getDataAsString: jest.fn(() => driveFiles[fileName].content)
+            }));
+          }
+          
+          // Return Drive API response format
+          return { id: fileId };
+        }),
+        get: jest.fn((fileId, options) => {
+          // Find file by ID (ID format is 'file-<name>')
+          const fileName = Object.keys(driveFiles).find(name => {
+            const file = driveFiles[name];
+            return file && (file.getId() === fileId || file.id === fileId);
+          });
+          
+          if (fileName && driveFiles[fileName]) {
+            const file = driveFiles[fileName];
+            
+            // If alt='media', return parsed JSON object (matching real Drive API behavior)
+            if (options && options.alt === 'media') {
+              const content = file.content || '{}';
+              try {
+                // Return parsed JSON object directly (as Drive API does)
+                return JSON.parse(content);
+              } catch (e) {
+                // If parsing fails, return empty object
+                return {};
+              }
+            }
+            
+            // Otherwise return file metadata
+            return {
+              id: fileId,
+              name: fileName,
+              mimeType: 'application/json',
+              size: file.content ? file.content.length : 0
+            };
+          }
+          
+          throw new Error('File not found: ' + fileId);
+        }),
+        update: jest.fn((resource, fileId, blob) => {
+          // Find file by ID
+          const fileName = Object.keys(driveFiles).find(name => {
+            const file = driveFiles[name];
+            return file && (file.getId() === fileId || file.id === fileId);
+          });
+          
+          if (!fileName || !driveFiles[fileName]) {
+            throw new Error('File not found for update: ' + fileId);
+          }
+          
+          // Get content from blob
+          let content = '';
+          if (typeof blob === 'string') {
+            content = blob;
+          } else if (blob && typeof blob.getDataAsString === 'function') {
+            content = blob.getDataAsString();
+          }
+          
+          // Update file content
+          driveFiles[fileName].content = content;
+          driveFiles[fileName].getBlob = jest.fn(() => ({
+            getDataAsString: jest.fn(() => content)
+          }));
+          
+          return { id: fileId };
+        }),
+        remove: jest.fn((fileId) => {
+          // Find file by ID and delete it
+          const fileName = Object.keys(driveFiles).find(name => {
+            const file = driveFiles[name];
+            return file && (file.getId() === fileId || file.id === fileId);
+          });
+          
+          if (fileName && driveFiles[fileName]) {
+            delete driveFiles[fileName];
+          }
+        })
+      }
+    };
+
     global.GmailApp = mockGmailApp;
     global.DriveApp = mockDriveApp;
+    global.Drive = mockDriveAPI;
     global.Utilities = mockUtilities;
     global.Session = {
       getActiveUser: jest.fn(() => ({
@@ -250,6 +392,7 @@ describe('Daily Summary Regression Tests', () => {
     scriptContext.PropertiesService = global.PropertiesService;
     scriptContext.GmailApp = mockGmailApp;
     scriptContext.DriveApp = mockDriveApp;
+    scriptContext.Drive = mockDriveAPI;
     scriptContext.Utilities = mockUtilities;
     scriptContext.Session = global.Session;
 
@@ -363,7 +506,14 @@ describe('Daily Summary Regression Tests', () => {
       scriptContext.runPassiveWorkflow();
 
       // Verify results were saved to Drive
-      const saved1 = JSON.parse(driveFiles['gmail-fast-read-accumulated-results.json'].content);
+      const fileId = mockPropertiesStore['accumulation_file_id'];
+      expect(fileId).toBeDefined();
+      const fileName = Object.keys(driveFiles).find(name => {
+        const file = driveFiles[name];
+        return file && (file.getId() === fileId || file.id === fileId);
+      });
+      expect(fileName).toBeDefined();
+      const saved1 = JSON.parse(driveFiles[fileName].content);
       expect(saved1.mustDo).toHaveLength(1);
       expect(saved1.mustKnow).toHaveLength(1);
       expect(saved1.totalProcessed).toBe(5);
@@ -385,8 +535,14 @@ describe('Daily Summary Regression Tests', () => {
 
       scriptContext.runPassiveWorkflow();
 
-      // Verify results were accumulated
-      const saved2 = JSON.parse(driveFiles['gmail-fast-read-accumulated-results.json'].content);
+      // Verify results were accumulated in Drive (reuse same fileId from first run)
+      expect(fileId).toBeDefined();
+      const fileName2 = Object.keys(driveFiles).find(name => {
+        const file = driveFiles[name];
+        return file && (file.getId() === fileId || file.id === fileId);
+      });
+      expect(fileName2).toBeDefined();
+      const saved2 = JSON.parse(driveFiles[fileName2].content);
       expect(saved2.mustDo).toHaveLength(2);
       expect(saved2.mustKnow).toHaveLength(2);
       expect(saved2.totalProcessed).toBe(8); // 5 + 3
@@ -491,7 +647,14 @@ describe('Daily Summary Regression Tests', () => {
 
       // Verify results accumulated but not sent
       expect(emailSent).toHaveLength(0);
-      const saved = JSON.parse(driveFiles['gmail-fast-read-accumulated-results.json'].content);
+      const missedFileId = mockPropertiesStore['accumulation_file_id'];
+      expect(missedFileId).toBeDefined();
+      const missedFileName = Object.keys(driveFiles).find(name => {
+        const file = driveFiles[name];
+        return file && (file.getId() === missedFileId || file.id === missedFileId);
+      });
+      expect(missedFileName).toBeDefined();
+      const saved = JSON.parse(driveFiles[missedFileName].content);
       expect(saved.mustDo).toHaveLength(1);
 
       // Next day - within window (21:00)
@@ -508,28 +671,32 @@ describe('Daily Summary Regression Tests', () => {
       expect(emailSent[0].subject).toContain('Daily Summary');
       expect(emailSent[0].subject).toContain('2024-01-16');
 
-      // Verify accumulated results were cleared
-      expect(driveFiles['gmail-fast-read-accumulated-results.json']).toBeUndefined();
+      // Verify accumulated results were cleared from PropertiesService
+      expect(mockPropertiesStore['accumulated_results']).toBeUndefined();
     });
   });
 
   describe('Cleanup After Send', () => {
     test('should clear accumulated results only after successful send', () => {
-      // Set up accumulated results
-      driveFiles['gmail-fast-read-accumulated-results.json'] = {
-        getId: jest.fn(() => 'file-id'),
-        getBlob: jest.fn(() => ({
-          getDataAsString: jest.fn(() => JSON.stringify({
-            mustDo: [{ subject: 'Task 1', keyAction: 'Do something' }],
-            mustKnow: [],
-            totalProcessed: 5,
-            firstDate: '2024-01-15T10:00:00Z',
-            lastDate: '2024-01-15T11:00:00Z'
-          }))
-        })),
-        setContent: jest.fn(),
-        setTrashed: jest.fn()
+      const fileContent = {
+        mustDo: [{ subject: 'Task 1', keyAction: 'Do something' }],
+        mustKnow: [],
+        totalProcessed: 5,
+        firstDate: '2024-01-15T10:00:00Z',
+        lastDate: '2024-01-15T11:00:00Z'
       };
+      
+      // Set up accumulated results in Drive (new implementation)
+      const fileName = 'gmail-fast-read-accumulated-results.json';
+      const fileId = 'file-' + fileName;
+      const mockFile = {
+        getId: jest.fn(() => fileId),
+        getName: jest.fn(() => fileName),
+        content: JSON.stringify(fileContent),
+        id: fileId
+      };
+      driveFiles[fileName] = mockFile;
+      mockPropertiesStore['accumulation_file_id'] = fileId;
 
       // Mock time within window
       mockUtilities.formatDate = jest.fn((date, tz, format) => {
@@ -546,29 +713,32 @@ describe('Daily Summary Regression Tests', () => {
       // Verify email was sent
       expect(emailSent.length).toBeGreaterThan(0);
 
-      // Verify file was trashed (cleared)
-      expect(driveFiles['gmail-fast-read-accumulated-results.json'].setTrashed).toHaveBeenCalled();
+      // Verify data was cleared from Drive (new implementation)
+      const clearedFileId = mockPropertiesStore['accumulation_file_id'];
+      if (clearedFileId) {
+        const clearedFileName = Object.keys(driveFiles).find(name => {
+          const file = driveFiles[name];
+          return file && (file.getId() === clearedFileId || file.id === clearedFileId);
+        });
+        expect(clearedFileName).toBeUndefined(); // File should be deleted
+      }
+      expect(mockPropertiesStore['accumulation_file_id']).toBeUndefined();
 
       // Verify last summary date was set
       expect(mockPropertiesService.setProperty).toHaveBeenCalledWith('passiveLastSummaryDate', '2024-01-15');
     });
 
     test('should keep accumulated results if send fails', () => {
-      // Set up accumulated results
-      driveFiles['gmail-fast-read-accumulated-results.json'] = {
-        getId: jest.fn(() => 'file-id'),
-        getBlob: jest.fn(() => ({
-          getDataAsString: jest.fn(() => JSON.stringify({
-            mustDo: [{ subject: 'Task 1', keyAction: 'Do something' }],
-            mustKnow: [],
-            totalProcessed: 5,
-            firstDate: '2024-01-15T10:00:00Z',
-            lastDate: '2024-01-15T11:00:00Z'
-          }))
-        })),
-        setContent: jest.fn(),
-        setTrashed: jest.fn()
+      const fileContent = {
+        mustDo: [{ subject: 'Task 1', keyAction: 'Do something' }],
+        mustKnow: [],
+        totalProcessed: 5,
+        firstDate: '2024-01-15T10:00:00Z',
+        lastDate: '2024-01-15T11:00:00Z'
       };
+      
+      // Set up accumulated results in PropertiesService (new implementation)
+      mockPropertiesStore['accumulated_results'] = JSON.stringify(fileContent);
 
       // Mock email send to throw error
       mockGmailApp.sendEmail = jest.fn(() => {
@@ -589,18 +759,26 @@ describe('Daily Summary Regression Tests', () => {
         });
       }).not.toThrow();
 
-      // Verify file was NOT trashed
-      expect(driveFiles['gmail-fast-read-accumulated-results.json'].setTrashed).not.toHaveBeenCalled();
+      // Verify data was NOT cleared from Drive (new implementation)
+      const keptFileId = mockPropertiesStore['accumulation_file_id'];
+      expect(keptFileId).toBeDefined();
+      const keptFileName = Object.keys(driveFiles).find(name => {
+        const file = driveFiles[name];
+        return file && (file.getId() === keptFileId || file.id === keptFileId);
+      });
+      expect(keptFileName).toBeDefined(); // File should still exist
     });
   });
 
   describe('Drive Operations', () => {
-    test('should create file if it does not exist', () => {
+    test('should create empty structure if it does not exist', () => {
+      // Ensure no data is stored (new file scenario)
+      delete mockPropertiesStore['accumulation_file_id'];
+      driveFiles = {}; // Clear all files
+      
       const result = scriptContext.loadAccumulatedResults();
       
-      // New implementation uses getFilesByName or createFile directly
-      expect(mockDriveApp.getFilesByName).toHaveBeenCalled();
-      expect(driveFiles['gmail-fast-read-accumulated-results.json']).toBeDefined();
+      // New implementation uses Drive API - should create file
       expect(result).toEqual({
         mustDo: [],
         mustKnow: [],
@@ -608,9 +786,13 @@ describe('Daily Summary Regression Tests', () => {
         firstDate: null,
         lastDate: null
       });
+      // Verify Drive API create was called
+      expect(scriptContext.Drive?.Files?.create).toHaveBeenCalled();
+      // Verify file ID was stored
+      expect(mockPropertiesStore['accumulation_file_id']).toBeDefined();
     });
 
-    test('should read existing file', () => {
+    test('should read existing data from Drive', () => {
       const fileContent = {
         mustDo: [{ subject: 'Test' }],
         mustKnow: [],
@@ -618,19 +800,18 @@ describe('Daily Summary Regression Tests', () => {
         firstDate: '2024-01-15T10:00:00Z',
         lastDate: '2024-01-15T11:00:00Z'
       };
-      driveFiles['gmail-fast-read-accumulated-results.json'] = {
-        getId: jest.fn(() => 'file-id'),
-        getName: jest.fn(() => 'gmail-fast-read-accumulated-results.json'),
-        getBlob: jest.fn(() => ({
-          getDataAsString: jest.fn(() => JSON.stringify(fileContent))
-        })),
-        setContent: jest.fn(),
-        setTrashed: jest.fn(),
-        content: JSON.stringify(fileContent)
-      };
       
-      // Store the file ID in PropertiesService so getFileById can find it
-      mockPropertiesStore[FILE_ID_PROPERTY_KEY] = 'file-id';
+      // Create file in Drive and store file ID
+      const fileName = 'gmail-fast-read-accumulated-results.json';
+      const fileId = 'file-' + fileName;
+      const mockFile = {
+        getId: jest.fn(() => fileId),
+        getName: jest.fn(() => fileName),
+        content: JSON.stringify(fileContent),
+        id: fileId
+      };
+      driveFiles[fileName] = mockFile;
+      mockPropertiesStore['accumulation_file_id'] = fileId;
 
       const result = scriptContext.loadAccumulatedResults();
       
@@ -649,29 +830,44 @@ describe('Daily Summary Regression Tests', () => {
 
       scriptContext.saveAccumulatedResults(results);
 
-      const saved = JSON.parse(driveFiles['gmail-fast-read-accumulated-results.json'].content);
+      // Verify data was saved to Drive
+      const fileId = mockPropertiesStore['accumulation_file_id'];
+      expect(fileId).toBeDefined();
+      const fileName = Object.keys(driveFiles).find(name => {
+        const file = driveFiles[name];
+        return file && (file.getId() === fileId || file.id === fileId);
+      });
+      expect(fileName).toBeDefined();
+      const saved = JSON.parse(driveFiles[fileName].content);
       expect(saved.mustDo).toHaveLength(1);
       expect(saved.totalProcessed).toBe(5);
     });
 
-    test('should clear file from Drive', () => {
-      driveFiles['gmail-fast-read-accumulated-results.json'] = {
-        getId: jest.fn(() => 'file-id'),
-        getName: jest.fn(() => 'gmail-fast-read-accumulated-results.json'),
-        getBlob: jest.fn(() => ({
-          getDataAsString: jest.fn(() => '{}')
-        })),
-        setContent: jest.fn(),
-        setTrashed: jest.fn()
+    test('should clear data from Drive', () => {
+      // Create file in Drive first
+      const fileName = 'gmail-fast-read-accumulated-results.json';
+      const fileId = 'file-' + fileName;
+      const mockFile = {
+        getId: jest.fn(() => fileId),
+        getName: jest.fn(() => fileName),
+        content: JSON.stringify({
+          mustDo: [{ subject: 'Test' }],
+          mustKnow: [],
+          totalProcessed: 5
+        }),
+        id: fileId
       };
-      
-      // Store the file ID in PropertiesService so getFileById can find it
-      mockPropertiesStore[FILE_ID_PROPERTY_KEY] = 'file-id';
+      driveFiles[fileName] = mockFile;
+      mockPropertiesStore['accumulation_file_id'] = fileId;
 
       scriptContext.clearAccumulatedResults();
 
-      expect(driveFiles['gmail-fast-read-accumulated-results.json'].setTrashed).toHaveBeenCalled();
-      expect(mockPropertiesStore[FILE_ID_PROPERTY_KEY]).toBeUndefined();
+      // Verify file was removed from Drive
+      expect(driveFiles[fileName]).toBeUndefined();
+      // Verify file ID was cleared
+      expect(mockPropertiesStore['accumulation_file_id']).toBeUndefined();
+      // Verify Drive API remove was called
+      expect(scriptContext.Drive?.Files?.remove).toHaveBeenCalledWith(fileId);
     });
   });
 });

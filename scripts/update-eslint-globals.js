@@ -22,6 +22,12 @@ const globalNames = Object.keys(globals).sort();
 // Read current ESLint config
 const eslintConfigText = fs.readFileSync(eslintrcPath, 'utf8');
 
+// Globals that should be preserved (Google Apps Script globals not defined in code)
+const preservedGlobals = ['Drive'];
+
+// Combine extracted globals with preserved ones
+const allGlobalNames = [...new Set([...preservedGlobals, ...globalNames])].sort();
+
 // Find the globals section and replace it
 // Look for the pattern between "globals: {" and the closing brace
 const globalsStartMarker = /(\s+globals:\s+\{)/;
@@ -32,7 +38,7 @@ if (!globalsStartMarker.test(eslintConfigText)) {
 }
 
 // Generate new globals list with proper indentation
-const globalsList = globalNames
+const globalsList = allGlobalNames
   .map(name => `        '${name}': 'readonly'`)
   .join(',\n');
 

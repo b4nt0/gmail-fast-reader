@@ -34,3 +34,12 @@ function getUserEmailAddress() {
     return null;
   }
 }
+
+/**
+ * Check if the current user is in debug mode
+ * @returns {boolean} True if current user matches DEBUG_USER_EMAIL
+ */
+function debugMode() {
+  const userEmail = getUserEmailAddress();
+  return userEmail === DEBUG_USER_EMAIL;
+}
