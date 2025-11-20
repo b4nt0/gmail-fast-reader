@@ -680,7 +680,8 @@ function mergeConfiguration(partialConfig) {
     mustDoLabel: partialConfig.mustDoLabel !== undefined ? partialConfig.mustDoLabel : existing.mustDoLabel,
     mustKnowLabel: partialConfig.mustKnowLabel !== undefined ? partialConfig.mustKnowLabel : existing.mustKnowLabel,
     markProcessedAsRead: partialConfig.markProcessedAsRead !== undefined ? partialConfig.markProcessedAsRead : existing.markProcessedAsRead,
-    removeUninterestingFromInbox: partialConfig.removeUninterestingFromInbox !== undefined ? partialConfig.removeUninterestingFromInbox : existing.removeUninterestingFromInbox
+    removeUninterestingFromInbox: partialConfig.removeUninterestingFromInbox !== undefined ? partialConfig.removeUninterestingFromInbox : existing.removeUninterestingFromInbox,
+    ignoreTopics: partialConfig.ignoreTopics !== undefined ? partialConfig.ignoreTopics : existing.ignoreTopics
   };
 }
 
@@ -723,7 +724,8 @@ function handleTopicsSubmit(e) {
       mustDoTopics: getFormValue(formInputs.mustDoTopics),
       mustKnowTopics: getFormValue(formInputs.mustKnowTopics),
       mustDoOther: getFormBoolean(formInputs.mustDoOther),
-      mustKnowOther: getFormBoolean(formInputs.mustKnowOther)
+      mustKnowOther: getFormBoolean(formInputs.mustKnowOther),
+      ignoreTopics: getFormValue(formInputs.ignoreTopics)
     };
     
     const mergedConfig = mergeConfiguration(partialConfig);
@@ -817,7 +819,8 @@ function handleOnboardingSaveAndNext(e) {
         mustDoTopics: getFormValue(formInputs.mustDoTopics),
         mustKnowTopics: getFormValue(formInputs.mustKnowTopics),
         mustDoOther: getFormBoolean(formInputs.mustDoOther),
-        mustKnowOther: getFormBoolean(formInputs.mustKnowOther)
+        mustKnowOther: getFormBoolean(formInputs.mustKnowOther),
+        ignoreTopics: getFormValue(formInputs.ignoreTopics)
       };
     }
     
@@ -883,6 +886,7 @@ function handleNukeSettings() {
     properties.deleteProperty('mustKnowLabel');
     properties.deleteProperty('markProcessedAsRead');
     properties.deleteProperty('removeUninterestingFromInbox');
+    properties.deleteProperty('ignoreTopics');
     
     return buildOnboardingCard(1);
   } catch (error) {

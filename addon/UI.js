@@ -296,6 +296,15 @@ function buildOnboardingCard(step = 1) {
         .setTitle('Additional Options')
         .setFieldName('mustKnowOther')
         .addItem('Let AI decide on other relevant topics', 'true', config.mustKnowOther)));
+      
+    card.addSection(CardService.newCardSection()
+      .setHeader('Ignore Topics')
+      .addWidget(CardService.newTextInput()
+        .setFieldName('ignoreTopics')
+        .setTitle('Topics to Ignore')
+        .setValue(config.ignoreTopics)
+        .setHint('Enter topics separated by new lines (e.g., social connection requests, shipment notifications, customer surveys). Emails matching these topics will be ignored and not included in summaries or labels.')
+        .setMultiline(true)));
   }
     
   // Step 3: Email Settings
@@ -411,6 +420,14 @@ function buildConfigurationCard() {
         .setTitle('Additional Options')
         .setFieldName('mustKnowOther')
         .addItem('Let AI decide on other relevant topics', 'true', config.mustKnowOther)))
+    .addSection(CardService.newCardSection()
+      .setHeader('Ignore Topics')
+      .addWidget(CardService.newTextInput()
+        .setFieldName('ignoreTopics')
+        .setTitle('Topics to Ignore')
+        .setValue(config.ignoreTopics)
+        .setHint('Enter topics separated by new lines (e.g., social connection requests, shipment notifications, customer surveys). Emails matching these topics will be ignored and not included in summaries or labels.')
+        .setMultiline(true)))
     .addSection(CardService.newCardSection()
       .addWidget(CardService.newButtonSet()
         .addButton(CardService.newTextButton()

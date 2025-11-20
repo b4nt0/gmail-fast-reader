@@ -34,7 +34,8 @@ function getConfiguration() {
     mustDoLabel: getProp('mustDoLabel', 'TODO'),
     mustKnowLabel: getProp('mustKnowLabel', 'FYI'),
     markProcessedAsRead: getBoolProp('markProcessedAsRead', false),
-    removeUninterestingFromInbox: getBoolProp('removeUninterestingFromInbox', false)
+    removeUninterestingFromInbox: getBoolProp('removeUninterestingFromInbox', false),
+    ignoreTopics: getProp('ignoreTopics', 'Social connection requests\nShipment notifications from stores\nSocial posts\nCustomer surveys')
   };
 }
 
@@ -74,7 +75,8 @@ function saveConfiguration(config) {
     'mustDoLabel': safeString(config.mustDoLabel, ''),
     'mustKnowLabel': safeString(config.mustKnowLabel, ''),
     'markProcessedAsRead': safeBoolean(config.markProcessedAsRead) ? 'true' : 'false',
-    'removeUninterestingFromInbox': safeBoolean(config.removeUninterestingFromInbox) ? 'true' : 'false'
+    'removeUninterestingFromInbox': safeBoolean(config.removeUninterestingFromInbox) ? 'true' : 'false',
+    'ignoreTopics': safeString(config.ignoreTopics, 'Social connection requests\nShipment notifications from stores\nSocial posts\nCustomer surveys')
   });
 }
 

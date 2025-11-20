@@ -243,6 +243,7 @@ function processEmailsInBatches(emailThreads, config) {
   const allResults = {
     mustDo: [],
     mustKnow: [],
+    ignore: [],
     totalProcessed: 0,
     batchesProcessed: 0
   };
@@ -449,6 +450,9 @@ function mergeResults(allResults, batchResults) {
   if (batchResults.mustKnow) {
     allResults.mustKnow = allResults.mustKnow.concat(batchResults.mustKnow);
   }
+  if (batchResults.ignore) {
+    allResults.ignore = (allResults.ignore || []).concat(batchResults.ignore);
+  }
   allResults.totalProcessed += batchResults.totalProcessed || 0;
 }
 
@@ -480,7 +484,41 @@ function analyzeEmailsWithOpenAI(emailThreads, config) {
     
     const results = parseOpenAIResponse(response);
     
-    // Count total emails processed
+    // Filter out ignored emails from mustDo and mustKnow
+    // Create sets of ignored email identifiers for efficient lookup
+    const ignoredEmailIds = new Set();
+    const ignoredRfc822Ids = new Set();
+    
+    if (results.ignore && Array.isArray(results.ignore)) {
+      results.ignore.forEach(ignoredEmail => {
+        if (ignoredEmail.emailId) {
+          ignoredEmailIds.add(ignoredEmail.emailId);
+        }
+        if (ignoredEmail.rfc822MessageId) {
+          ignoredRfc822Ids.add(ignoredEmail.rfc822MessageId);
+        }
+      });
+    }
+    
+    // Filter mustDo array
+    if (results.mustDo && Array.isArray(results.mustDo)) {
+      results.mustDo = results.mustDo.filter(email => {
+        const isIgnored = (email.emailId && ignoredEmailIds.has(email.emailId)) ||
+                         (email.rfc822MessageId && ignoredRfc822Ids.has(email.rfc822MessageId));
+        return !isIgnored;
+      });
+    }
+    
+    // Filter mustKnow array
+    if (results.mustKnow && Array.isArray(results.mustKnow)) {
+      results.mustKnow = results.mustKnow.filter(email => {
+        const isIgnored = (email.emailId && ignoredEmailIds.has(email.emailId)) ||
+                         (email.rfc822MessageId && ignoredRfc822Ids.has(email.rfc822MessageId));
+        return !isIgnored;
+      });
+    }
+    
+    // Count total emails processed (including ignored ones)
     results.totalProcessed = emailThreads.reduce((total, thread) => total + thread.emails.length, 0);
     
     return results;
@@ -496,6 +534,7 @@ function analyzeEmailsWithOpenAI(emailThreads, config) {
 function buildAnalysisPrompt(emailThreads, config) {
   const mustDoTopics = config.mustDoTopics.split('\n').filter(t => t.trim());
   const mustKnowTopics = config.mustKnowTopics.split('\n').filter(t => t.trim());
+  const ignoreTopics = config.ignoreTopics.split('\n').filter(t => t.trim());
   
   // Format topics as bullet lists
   const mustDoTopicsList = mustDoTopics.length > 0 
@@ -504,6 +543,10 @@ function buildAnalysisPrompt(emailThreads, config) {
     
   const mustKnowTopicsList = mustKnowTopics.length > 0 
     ? mustKnowTopics.map(topic => `- ${topic}`).join('\n')
+    : 'None specified';
+    
+  const ignoreTopicsList = ignoreTopics.length > 0 
+    ? ignoreTopics.map(topic => `- ${topic}`).join('\n')
     : 'None specified';
   
   // Build messages array with separate user prompt for each thread
@@ -514,14 +557,17 @@ function buildAnalysisPrompt(emailThreads, config) {
       Your job is to reduce the reading effort for the user by identifying important emails, key knowledge and actions, and dates.
       Always respond with valid JSON.
 
-TASK: Categorize email threads into "I must do" and "I must know" categories.
+TASK: Categorize email threads into "I must do", "I must know", and "ignore" categories.
 
 For each email thread, determine:
 1. If it fits "I must do" category (actionable items, deadlines, tasks)
 2. If it fits "I must know" category (informational, updates, news)
-3. Extract the earliest key action or knowledge from the entire thread
+3. If it fits "ignore" category (emails to ignore - useless notifications, spam, etc.)
+4. Extract the earliest key action or knowledge from the entire thread
 
 IMPORTANT: Not every email must make it to the output. Skipping emails is okay and even desired when they don't match any topic. Only include emails that are truly relevant to the user's specified topics.
+
+CRITICAL: The "ignore" category takes precedence. If an email matches ignore topics, it MUST be placed in the "ignore" category and MUST NOT appear in "I must do" or "I must know" categories, even if it also matches those topics.
 
 For "I must do" category a clear action must be identified. A valid action must be more than simply review or take note of the said email, click a link in the email, or review a material it refers to.
 
@@ -564,6 +610,16 @@ MANDATE: You MUST respond with valid JSON in exactly this structure:
       "date": "YYYY-MM-DD or null if no date found",
       "topic": "which topic it matches"
     }
+  ],
+  "ignore": [
+    {
+      "emailId": "email_id",
+      "rfc822MessageId": "rfc822_message_id",
+      "subject": "email subject",
+      "sender": "sender email",
+      "date": "YYYY-MM-DD or null if no date found",
+      "topic": "which ignore topic it matches"
+    }
   ]
 }
   `
@@ -581,6 +637,13 @@ ${config.mustDoOther ? 'Skip the email if it does not contain any valid action. 
 ${mustKnowTopicsList}
 
 ${config.mustKnowOther ? 'If an email does not fit any of my topics, but contains important facts, events, or updates, list it as "other" (for example, price changes, information from lawyers, police, disasters and emergencies). If it is not important enough, do not include it in any topic, skip it instead.' : 'If an email does not fit any of my topics, do not include it in any topic, skip it instead.'}`
+    },
+    {
+      role: 'user',
+      content: `MY "IGNORE" TOPICS (emails matching these should be ignored and not appear in mustDo or mustKnow):
+${ignoreTopicsList}
+
+If an email matches any of these ignore topics, it MUST be placed in the "ignore" category and MUST NOT appear in "I must do" or "I must know" categories, regardless of whether it also matches those topics. The ignore category takes absolute precedence.`
     }
   ];
   
@@ -672,6 +735,11 @@ function parseOpenAIResponse(response) {
     // Validate structure
     if (!parsed.mustDo || !parsed.mustKnow) {
       throw new Error('Invalid response structure from OpenAI');
+    }
+    
+    // Ensure ignore array exists (for backward compatibility)
+    if (!parsed.ignore) {
+      parsed.ignore = [];
     }
     
     return parsed;
@@ -812,7 +880,7 @@ function markProcessedEmailsAsRead(results, config) {
 
 /**
  * Remove uninteresting emails from inbox based on configuration
- * Uninteresting = threads that have no emails in mustDo or mustKnow results
+ * Uninteresting = threads that have no emails in mustDo or mustKnow results, OR threads with ignored emails
  */
 function removeUninterestingEmailsFromInbox(emailThreads, results, config) {
   if (!config.removeUninterestingFromInbox) {
@@ -836,20 +904,36 @@ function removeUninterestingEmailsFromInbox(emailThreads, results, config) {
       if (email.rfc822MessageId) interestingRfc822Ids.add(email.rfc822MessageId);
     });
     
-    // Check each thread to see if it contains any interesting emails
+    // Collect all email IDs from ignored results
+    const ignoredEmailIds = new Set();
+    const ignoredRfc822Ids = new Set();
+    
+    // Add ignored emails (these should be archived regardless of other categories)
+    (results.ignore || []).forEach(email => {
+      if (email.emailId) ignoredEmailIds.add(email.emailId);
+      if (email.rfc822MessageId) ignoredRfc822Ids.add(email.rfc822MessageId);
+    });
+    
+    // Check each thread to see if it contains any interesting emails or ignored emails
     for (const threadData of emailThreads || []) {
       try {
         // Check if any email in this thread is interesting
         let hasInterestingEmail = false;
+        let hasIgnoredEmail = false;
+        
         for (const email of threadData.emails || []) {
           if (interestingEmailIds.has(email.id) || 
               (email.rfc822MessageId && interestingRfc822Ids.has(email.rfc822MessageId))) {
             hasInterestingEmail = true;
-            break;
+          }
+          if (ignoredEmailIds.has(email.id) || 
+              (email.rfc822MessageId && ignoredRfc822Ids.has(email.rfc822MessageId))) {
+            hasIgnoredEmail = true;
           }
         }
         
-        // If thread has no interesting emails, check if it's safe to archive
+        // Archive if thread has no interesting emails (this includes threads with only ignored emails)
+        // Threads with both ignored and interesting emails should NOT be archived
         if (!hasInterestingEmail) {
           try {
             const thread = GmailApp.getThreadById(threadData.threadId);
